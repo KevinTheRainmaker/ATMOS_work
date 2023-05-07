@@ -161,3 +161,6 @@ cython_debug/
 
 # secret
 config.json
+
+# log
+temp/
