@@ -4,12 +4,20 @@ import datetime
 import json
 import schedule
 import os
+from scp import SCPClient
 
 def logging(log):
+    print(log)
     with open('./temp/log.txt', 'a') as f:
         f.write(log)
 
-def job():
+def createSSHClient(server, port, user, password):
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.connect(server, port, user, password)
+    return client
+
+def job(srcfilename:list, dstfilename:str):
     path = './temp'
     if not os.path.isdir(path):
         os.mkdir(path)
@@ -29,12 +37,9 @@ def job():
         config = config['DEFAULT']
 
     # ssh connect
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-
     while(True):
         try:
-            ssh.connect(config['HOST_IP'], port=config['CONN_PORT'], username=config['USER_NAME'], password=config['PASSWORD'])
+            ssh = createSSHClient(config['HOST_IP'], port=config['CONN_PORT'], username=config['USER_NAME'], password=config['PASSWORD'])
             break
         except:
             logging(f'Connection failed... Retrying in 30 seconds.  {now}\n')
@@ -42,18 +47,20 @@ def job():
 
     logging(f'\nConnection Successed!   {now}\n')
 
-    stdin, stdout, stderr = ssh.exec_command('cd data && ls')
-    print(''.join(stdout.readlines()))
-
+    scp = SCPClient(ssh.get_transport())
+    scp.get(srcfilename[0],dstfilename)
+    scp.get(srcfilename[1],dstfilename)
     ssh.close()
 
-def scheduling(clock):
-    schedule.every().day.at(clock).do(job)
+def scheduling(clock, srcfilename, dstfilename):
+    schedule.every().day.at(clock).do(lambda: job(srcfilename, dstfilename))
 
     while True:
         schedule.run_pending()
         time.sleep(3)
 
 if __name__ == '__main__':
+    srcfilename=['data/raw', 'data/summaries']
+    dstfilename='./temp/'
     # scheduling('09:00')
-    job()
+    job(srcfilename, dstfilename)
