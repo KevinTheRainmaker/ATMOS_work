@@ -6,6 +6,7 @@ import schedule
 import os
 import sys
 from scp import SCPClient
+import dropbox
 
 def logging(log):
     print(log)
@@ -20,6 +21,13 @@ def createSSHClient(server, port, username, password):
 
 def progress(filename, size, sent):
     sys.stdout.write("%s\'s progress: %.2f%%   \r" % (filename, float(sent)/float(size)*100) )
+
+def scheduling(clock, src_dir_list, dst_dir):
+    schedule.every().day.at(clock).do(lambda: job(src_dir_list, dst_dir))
+
+    while True:
+        schedule.run_pending()
+        time.sleep(3)
 
 def job(src_dir_list:list, dst_dir:str):
     path = './temp'
@@ -58,16 +66,32 @@ def job(src_dir_list:list, dst_dir:str):
     for i in range(len(src_dir_list)):
         start = time.time()
         scp.get(src_dir_list[i], dst_dir, recursive=True)
-        logging(f'"{src_dir_list[i]}" has been downloaded.\t(elapsed time: {time.time() - start})\nserver time: {now}\n')
+        logging(f'"{src_dir_list[i]}" has been downloaded. (elapsed time: {time.time() - start})\nserver time: {now}\n')
         
     ssh.close()
 
-def scheduling(clock, src_dir_list, dst_dir):
-    schedule.every().day.at(clock).do(lambda: job(src_dir_list, dst_dir))
+    # Using Dropbox API
+    dbx = dropbox.Dropbox(config['ACCESS_KEY'])
+    
+    data_dir = "./temp/"
+    dropbox_destination = "/CO2/"
+    
+    # enumerate local files recursively
+    for root, dirs, files in os.walk(data_dir):
 
-    while True:
-        schedule.run_pending()
-        time.sleep(3)
+        for filename in files:
+
+            # construct the full local path
+            local_path = os.path.join(root, filename)
+
+            # construct the full Dropbox path
+            relative_path = os.path.relpath(local_path, data_dir)
+            dropbox_path = os.path.join(dropbox_destination, relative_path)
+
+            # upload the file
+            with open(local_path, "rb") as f:
+                dbx.files_upload(f.read(), dropbox_path, mode=dropbox.files.WriteMode.overwrite)
+    logging(f"Data successfully uploaded to dropbox. (saved directory: {dropbox_destination})\nserver time: {now}\n")
 
 if __name__ == '__main__':
     src_dir_list=['data/summaries']
