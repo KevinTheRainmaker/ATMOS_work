@@ -165,3 +165,6 @@ config.json
 # datas
 temp/
 asset/
+
+# else
+.DS_Store
