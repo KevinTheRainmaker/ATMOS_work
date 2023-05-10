@@ -2,10 +2,8 @@ import paramiko
 import time
 import datetime
 import json
-import pkg_resources
 import schedule
 import os
-from os import path
 from pathlib import Path
 import sys
 from scp import SCPClient
@@ -102,12 +100,17 @@ if __name__ == '__main__':
     
     # get the path to the file within the executable
     config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
+    time_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'time_set.json')
     
     # load configurations
     with open(config_path, 'r') as f:
         config = json.load(f)
         config = config['DEFAULT']
 
+    with open(time_path, 'r') as f:
+        time_set = json.load(f)
+        time_set = time_set['DEFAULT']
+        
     src_dir_list=[f'data/summaries/', f'data/raw/{today.year}/{str(today.month).zfill(2)}/']
     dst_dir_list=['./temp/', f'./temp/raw/{today.year}/']
     
@@ -115,5 +118,5 @@ if __name__ == '__main__':
         path = Path(dst_dir)
         path.mkdir(parents=True, exist_ok=True)
     
-    # scheduling(config['SCHEDULE_SETTING'], src_dir_list, dst_dir_list)
-    job(today, config, src_dir_list, dst_dir_list)
+    scheduling(time_set['SCHEDULE_SETTING'], src_dir_list, dst_dir_list)
+    # job(today, config, src_dir_list, dst_dir_list)
