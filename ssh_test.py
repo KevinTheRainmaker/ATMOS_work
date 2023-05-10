@@ -7,6 +7,7 @@ import os
 import sys
 from scp import SCPClient
 import dropbox
+from pathlib import Path
 
 def get_time():
     now = datetime.datetime.now()
@@ -34,17 +35,8 @@ def scheduling(clock, src_dir_list, dst_dir):
     while True:
         schedule.run_pending()
         time.sleep(3)
-
-def job(today, src_dir_list:list, dst_dir_list:list):
-    path = './temp'
-    if not os.path.isdir(path):
-        os.mkdir(path)
     
-    # load configurations
-    with open('./config.json', 'r') as f:
-        config = json.load(f)
-        config = config['DEFAULT']
-
+def job(today, config, src_dir_list:list, dst_dir_list:list):
     # ssh connect
     logging(f'------{today}------\n')
     logging(f'Try to log in {config["USER_NAME"]}@{config["HOST_IP"]}..\n')
@@ -67,15 +59,20 @@ def job(today, src_dir_list:list, dst_dir_list:list):
         logging(f'"{src_dir_list[i]}" has been downloaded. (elapsed time: {time.time() - start})\nLocal time: {get_time()}\n')
         
     ssh.close()
-
+    
     # Using Dropbox API
-    dbx = dropbox.Dropbox(config['ACCESS_KEY'])
+    dbx = dropbox.Dropbox(oauth2_access_token=config["ACCESS_KEY"],
+                     oauth2_refresh_token=config["REFRESH_TOKEN"],
+                        app_key=config['APP_KEY'],
+                        app_secret=config['APP_SECRET'])
     
     data_dir = "./temp/"
     dropbox_destination = "/CO2/"
     
     # enumerate local files recursively
-    for root, dirs, files in os.walk(data_dir):
+    logging(f'Trying to upload the data to DropBox...\nLocal time: {get_time()}\n')
+    
+    for root, _, files in os.walk(data_dir):
 
         for filename in files:
 
@@ -89,20 +86,29 @@ def job(today, src_dir_list:list, dst_dir_list:list):
             # upload the file
             with open(local_path, "rb") as f:
                 try:
-                    logging(f'Trying to upload the data to DropBox...\nLocal time: {get_time()}\n')
                     dbx.files_upload(f.read(), dropbox_path, mode=dropbox.files.WriteMode.overwrite)
                 except:
                     logging(f'Upload failed... Retrying in 30 seconds.\nLocal time: {get_time()}\n')
                     time.sleep(30)
-                    
-    logging(f"Data successfully uploaded to dropbox. (saved directory: {dropbox_destination})\nLocal time: {get_time()}\n")
+                else:
+                    logging(f"Data successfully uploaded to dropbox. (saved directory: {dropbox_destination})\nLocal time: {get_time()}\n")
 
 if __name__ == '__main__':
     
     # for time logging
     today = datetime.date.today()
     
-    src_dir_list=[f'data/raw/{today.year}/{str(today.month).zfill(2)}/',f'data/summaries/']
-    dst_dir_list=[f'./temp/raw/{today.year}/', './temp/']
-    # scheduling('09:00', src_dir_list, dst_dir_list)
-    job(today, src_dir_list, dst_dir_list)
+    # load configurations
+    with open('./config.json', 'r') as f:
+        config = json.load(f)
+        config = config['DEFAULT']
+
+    src_dir_list=[f'data/summaries/', f'data/raw/{today.year}/{str(today.month).zfill(2)}/']
+    dst_dir_list=['./temp/', f'./temp/raw/{today.year}/']
+    
+    for dst_dir in dst_dir_list:
+        path = Path(dst_dir)
+        path.mkdir(parents=True, exist_ok=True)
+    
+    # scheduling(config['SCHEDULE_SETTING'], src_dir_list, dst_dir_list)
+    job(today, config, src_dir_list, dst_dir_list)
