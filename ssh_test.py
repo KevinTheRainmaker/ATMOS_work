@@ -12,6 +12,7 @@ import dropbox
 import zipfile
 import chardet
 import csv
+import argparse
 
 os.environ['DATA_DIR'] = './temp'
 os.environ['DROPBOX_DESTINATION'] = '/CO2'
@@ -40,32 +41,32 @@ def ghg_to_csv(zip_file):
     csv_path = os.path.join(base_path, 'csv')
     csv_path = os.path.join(csv_path, csv_file)
     if sys.platform == 'win32':
+        base_path = base_path.replace('\\', '/')
+        data_path = data_path.replace('\\', '/')
         csv_path = csv_path.replace('\\', '/')
 
     try:
         with zipfile.ZipFile(zip_file, 'r') as zip_ref:
             zip_ref.extract(data_file, path=str(base_path))
+        with open(data_path, 'rb') as file:
+            result = chardet.detect(file.read())
+        
+        encoding = result['encoding']
+
+        with open(data_path, 'r', encoding=encoding) as data_form, open(csv_path, 'w', newline='', encoding='utf-8') as csv_form:
+            writer = csv.writer(csv_form)
+
+            for line in data_form:
+                line = line.strip()
+
+                if line.startswith('#') or not line:
+                    continue
+
+                data = line.split('\t')
+
+                writer.writerow(data)   
     except:
         print(f'"{zip_file}" is not a zip file. Please check it manually.')
-
-    with open(data_path, 'rb') as file:
-        result = chardet.detect(file.read())
-
-    encoding = result['encoding']
-
-    with open(data_path, 'r', encoding=encoding) as data_form, open(csv_path, 'w', newline='', encoding='utf-8') as csv_form:
-        writer = csv.writer(csv_form)
-
-        for line in data_form:
-            line = line.strip()
-
-            if line.startswith('#') or not line:
-                continue
-
-            data = line.split('\t')
-
-            writer.writerow(data)
-    
 
 def createSSHClient(server, port, username, password):
     client = paramiko.SSHClient()
@@ -76,26 +77,6 @@ def createSSHClient(server, port, username, password):
 def progress(filename, size, sent):
     sys.stdout.write("%s\'s progress: %.2f%%   \r" % (filename, float(sent)/float(size)*100) )
 
-<<<<<<< HEAD
-def scheduling(time_set, src_dir_list, dst_dir):
-    repeat_type = time_set['REPEAT_TYPE']
-    clock = time_set['SCHEDULE_SETTING']
-    if repeat_type == 'day':
-        schedule.every().day.at(clock).do(lambda: job(src_dir_list, dst_dir))
-    elif repeat_type == 'hour':
-        schedule.every(clock).hours.do(lambda: job(src_dir_list, dst_dir))
-    elif repeat_type == 'minute':
-        schedule.every(clock).minutes.do(lambda: job(src_dir_list, dst_dir))
-    else:
-        logging(f'\nWrong repeat type({repeat_type}).\nrepeat_type must be in ["day", "hour", "minute"]\n')
-        quit()
-
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
-    
-=======
->>>>>>> b3be9625020c8f96ead7951c47277b6339c80244
 def job(today, config, src_dir_list:list, dst_dir_list:list):
     # ssh connect
     logging(f'\n------{today}------\n')
@@ -115,18 +96,11 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
     
     for i in range(len(src_dir_list)):
         start = time.time()
-<<<<<<< HEAD
-        _, stdout, _ = ssh.exec_command(f'ls {src_dir_list[i]}/{today}*')
-        result = stdout.read().split()
-        for per_result in result:
-            scp.get(per_result, dst_dir_list[i], recursive=True)
-        logging(f'"\n{src_dir_list[i]}" has been downloaded. (elapsed time: {time.time() - start})\nLocal time: {get_time()}\n')
-=======
         if sys.platform == 'win32':
             for j in range(len(src_dir_list)):
                 src_dir_list[j] = src_dir_list[j].replace('\\', '/')
 
-        _, stdout, _ = ssh.exec_command(f'ls {src_dir_list[i]}/{today}*')
+        _, stdout, _ = ssh.exec_command(f'ls {src_dir_list[i]}/{str(today)[:-1]}*')
         result = stdout.read().split()
 
         for per_result in result:
@@ -137,7 +111,6 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
                 scp.get(per_result, dst_dir_list[i], recursive=True)
 
         logging(f'\n"{src_dir_list[i]}" has been downloaded. (elapsed time: {time.time() - start})\nLocal time: {get_time()}\n')
->>>>>>> b3be9625020c8f96ead7951c47277b6339c80244
     
     scp.close()        
     ssh.close()
@@ -182,7 +155,7 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
     # enumerate local files recursively
     logging(f'\nUploading the data to DropBox...\nLocal time: {get_time()}\n')
     
-    for root, _, files in tqdm(os.walk(data_dir)):
+    for root, _, files in os.walk(data_dir):
 
         for filename in tqdm(files):
 
@@ -199,16 +172,6 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
 
             # upload the file
             with open(local_path, "rb") as f:
-<<<<<<< HEAD
-                try:
-                    dbx.files_upload(f.read(), dropbox_path, mode=dropbox.files.WriteMode.overwrite)
-                except:
-                    print(f'\nUpload failed... Retrying in 3 seconds.\nLocal time: {get_time()}\n')
-                    time.sleep(3)
-                    
-    print(f"\nData successfully uploaded to dropbox. (saved directory: {dropbox_destination})\nLocal time: {get_time()}\n")
-    
-=======
                 while(True):
                     try:
                         dbx.files_upload(f.read(), dropbox_path, mode=dropbox.files.WriteMode.overwrite)
@@ -235,9 +198,13 @@ def scheduling(time_set, src_dir_list, dst_dir_list):
         schedule.run_pending()
         time.sleep(1)
 
->>>>>>> b3be9625020c8f96ead7951c47277b6339c80244
 if __name__ == '__main__':
     
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-q", "--quick", dest="quick", action="store_true", default=False)
+
+    args = parser.parse_args()
+
     # for time logging
     today = datetime.date.today()
 
@@ -262,11 +229,7 @@ if __name__ == '__main__':
     # get the path to the file within the executable
     config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
     time_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'time_set.json')
-<<<<<<< HEAD
-    temp_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp/log.txt')
-=======
     log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp/log.txt')
->>>>>>> b3be9625020c8f96ead7951c47277b6339c80244
     
     # load configurations
     with open(config_path, 'r') as f:
@@ -276,18 +239,8 @@ if __name__ == '__main__':
     with open(time_path, 'r') as f:
         time_set = json.load(f)
         time_set = time_set['DEFAULT']
-        
-<<<<<<< HEAD
-    src_dir_list=[f'data/summaries', f'data/raw/{today.year}/{str(today.month).zfill(2)}']
-    dst_dir_list=['./temp/summaries/', f'./temp/raw/{today.year}/{str(today.month).zfill(2)}/']
     
-    for dst_dir in dst_dir_list:
-        path = Path(dst_dir)
-        path.mkdir(parents=True, exist_ok=True)
-    
-    # scheduling(time_set, src_dir_list, dst_dir_list)
-    job(today, config, src_dir_list, dst_dir_list)
-=======
-    # scheduling(time_set, src_dir_list, dst_dir_list)
-    job(today, config, src_dir_list, dst_dir_list)
->>>>>>> b3be9625020c8f96ead7951c47277b6339c80244
+    if (args.quick):
+        job(today, config, src_dir_list, dst_dir_list)
+    else:
+        scheduling(time_set, src_dir_list, dst_dir_list)
