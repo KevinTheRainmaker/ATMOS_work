@@ -1,5 +1,6 @@
 {
   "DEFAULT": {
+    "REPEAT_TYPE": "day",
     "SCHEDULE_SETTING": "23:50"
   }
 }
