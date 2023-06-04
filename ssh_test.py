@@ -196,7 +196,9 @@ def scheduling(time_set, src_dir_list, dst_dir_list):
 
     while True:
         schedule.run_pending()
-        time.sleep(1)
+        for i in range(12):
+            time.sleep(0.15)
+            print(f'\rThe download will be started at {schedule.next_run()}  {animation[i % len(animation)]}', end="")
 
 if __name__ == '__main__':
     
