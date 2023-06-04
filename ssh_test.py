@@ -203,6 +203,8 @@ def scheduling(time_set, src_dir_list, dst_dir_list):
 def get_executable_path():
     if getattr(sys, 'frozen', False):  # 실행 파일로 패키징된 경우
         return os.path.dirname(sys.executable)
+    else:  # 스크립트로 직접 실행된 경우
+        return os.path.dirname(os.path.abspath(__file__))
 
 def get_file_path(file_name):
     executable_path = get_executable_path()
