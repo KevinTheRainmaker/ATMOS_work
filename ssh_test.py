@@ -200,6 +200,19 @@ def scheduling(time_set, src_dir_list, dst_dir_list):
             time.sleep(0.15)
             print(f'\rThe download will be started at {schedule.next_run()}  {animation[i % len(animation)]}', end="")
 
+def get_executable_path():
+    if getattr(sys, 'frozen', False):  # 실행 파일로 패키징된 경우
+        return os.path.dirname(sys.executable)
+
+def get_file_path(file_name):
+    executable_path = get_executable_path()
+    return os.path.join(executable_path, file_name)
+
+def read_json_file(file_path):
+    with open(file_path, 'r') as file:
+        data = json.load(file)
+    return data
+
 if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
@@ -223,15 +236,20 @@ if __name__ == '__main__':
         path = Path(dst_dir)
         path.mkdir(parents=True, exist_ok=True)
 
-    csv_path = os.path.join(dst_dir_list[1], 'csv')
-    csv_path = csv_path.replace('\\','/')
+   # get the path to the file within the executable
+    csv_path = get_file_path(f'{dst_dir_list[1]}/csv')
+    config_path = get_file_path('config.json')
+    time_path = get_file_path('time_set.json')
+    log_path = get_file_path('temp/log.txt')
+    
+    if sys.platform == 'win32':
+        csv_path = csv_path.replace('\\','/')
+        config_path = config_path.replace('\\','/')
+        time_path = time_path.replace('\\','/')
+        log_path = log_path.replace('\\','/')
+
     csv_path = Path(csv_path)
     csv_path.mkdir(parents=True, exist_ok=True)
-
-    # get the path to the file within the executable
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
-    time_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'time_set.json')
-    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp/log.txt')
     
     # load configurations
     with open(config_path, 'r') as f:
