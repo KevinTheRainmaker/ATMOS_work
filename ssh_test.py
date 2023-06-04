@@ -12,7 +12,6 @@ import dropbox
 import zipfile
 import chardet
 import csv
-import argparse
 
 os.environ['DATA_DIR'] = './temp'
 os.environ['DROPBOX_DESTINATION'] = '/CO2'
@@ -44,7 +43,7 @@ def ghg_to_csv(zip_file):
         base_path = base_path.replace('\\', '/')
         data_path = data_path.replace('\\', '/')
         csv_path = csv_path.replace('\\', '/')
-
+        
     try:
         with zipfile.ZipFile(zip_file, 'r') as zip_ref:
             zip_ref.extract(data_file, path=str(base_path))
@@ -66,7 +65,9 @@ def ghg_to_csv(zip_file):
 
                 writer.writerow(data)   
     except:
-        print(f'"{zip_file}" is not a zip file. Please check it manually.')
+        failed = os.path.basename(zip_file)
+        print(f'"{failed}" can not be translated. Please check it manually.')
+        return failed
 
 def createSSHClient(server, port, username, password):
     client = paramiko.SSHClient()
@@ -100,7 +101,7 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
             for j in range(len(src_dir_list)):
                 src_dir_list[j] = src_dir_list[j].replace('\\', '/')
 
-        _, stdout, _ = ssh.exec_command(f'ls {src_dir_list[i]}/{str(today)[:-1]}*')
+        _, stdout, _ = ssh.exec_command(f'ls {src_dir_list[i]}/{str(today)}*')#[:-1]
         result = stdout.read().split()
 
         for per_result in result:
@@ -121,6 +122,7 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
     logging(f'\nTranslating ghg to csv...\nLocal time: {get_time()}\n')
     
     start = time.time()
+    failed_list = []
 
     # 경로 내의 모든 파일에 대해 변환 수행
     for root, _, files in os.walk(directory):
@@ -130,10 +132,12 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
 
                 if sys.platform == 'win32':
                     zip_file = zip_file.replace('\\', '/')
-
-                ghg_to_csv(zip_file)
+                result = ghg_to_csv(zip_file)
+                if (result != None):
+                    failed_list.append(result)
     
-    logging(f'\nAll GHG has been translated. (elapsed time: {time.time() - start})\nLocal time: {get_time()}\n')
+    logging(f'\nGHG has been translated. (elapsed time: {time.time() - start})\nLocal time: {get_time()}\n')
+    logging(f'\nThese are the failed list: {failed_list}\n')
 
     target_format = '.data'  # 삭제할 파일 포맷
 
@@ -180,6 +184,7 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
                         logging(f'\nUpload failed... Retrying in 3 seconds.\nLocal time: {get_time()}\n')
                         time.sleep(3)
     logging(f"\nData successfully uploaded to dropbox. (saved directory: {dropbox_destination})\nLocal time: {get_time()}\n")
+    os.system('cls')
 
 def scheduling(time_set, src_dir_list, dst_dir_list):
     repeat_type = time_set['REPEAT_TYPE']
@@ -193,6 +198,7 @@ def scheduling(time_set, src_dir_list, dst_dir_list):
     else:
         logging(f'\nWrong repeat type({repeat_type}).\nrepeat_type must be in ["day", "hour", "minute"]\n')
         quit()
+    animation = '\|/-'
 
     while True:
         schedule.run_pending()
@@ -206,6 +212,7 @@ def get_executable_path():
     else:  # 스크립트로 직접 실행된 경우
         return os.path.dirname(os.path.abspath(__file__))
 
+
 def get_file_path(file_name):
     executable_path = get_executable_path()
     return os.path.join(executable_path, file_name)
@@ -216,12 +223,6 @@ def read_json_file(file_path):
     return data
 
 if __name__ == '__main__':
-    
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-q", "--quick", dest="quick", action="store_true", default=False)
-
-    args = parser.parse_args()
-
     # for time logging
     today = datetime.date.today()
 
@@ -238,7 +239,7 @@ if __name__ == '__main__':
         path = Path(dst_dir)
         path.mkdir(parents=True, exist_ok=True)
 
-   # get the path to the file within the executable
+    # get the path to the file within the executable
     csv_path = get_file_path(f'{dst_dir_list[1]}/csv')
     config_path = get_file_path('config.json')
     time_path = get_file_path('time_set.json')
@@ -252,7 +253,7 @@ if __name__ == '__main__':
 
     csv_path = Path(csv_path)
     csv_path.mkdir(parents=True, exist_ok=True)
-    
+
     # load configurations
     with open(config_path, 'r') as f:
         config = json.load(f)
@@ -262,7 +263,5 @@ if __name__ == '__main__':
         time_set = json.load(f)
         time_set = time_set['DEFAULT']
     
-    if (args.quick):
-        job(today, config, src_dir_list, dst_dir_list)
-    else:
-        scheduling(time_set, src_dir_list, dst_dir_list)
+    # job(today, config, src_dir_list, dst_dir_list)
+    scheduling(time_set, src_dir_list, dst_dir_list)
