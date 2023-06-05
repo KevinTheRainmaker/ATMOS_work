@@ -139,12 +139,13 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
     logging(f'\nGHG has been translated. (elapsed time: {time.time() - start})\nLocal time: {get_time()}\n')
     logging(f'\nThese are the failed list: {failed_list}\n')
 
-    target_format = '.data'  # 삭제할 파일 포맷
+    target_formats = ['.data', '.ghg']  # 삭제할 파일 포맷
 
     for filename in os.listdir(dst_dir_list[1]):
-        if filename.endswith(target_format):
-            file_path = os.path.join(dst_dir_list[1], filename)
-            os.remove(file_path)
+        for target_format in target_formats:
+            if filename.endswith(target_format) and filename not in failed_list: # failed list에 존재할 경우 삭제하지 않음
+                file_path = os.path.join(dst_dir_list[1], filename)
+                os.remove(file_path)
 
     # Using Dropbox API
     dbx = dropbox.Dropbox(oauth2_access_token=config["ACCESS_KEY"],
