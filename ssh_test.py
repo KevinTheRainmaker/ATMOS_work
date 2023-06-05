@@ -126,7 +126,7 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
         for per_result in result:
             filename = os.path.basename(per_result)  # Extract file name
             filename = str(filename).replace('ghg', 'csv')
-            local_filepath = os.path.join(f'{dst_dir_list[i]}/csv', filename.decode())  # Convert to the same type and join paths
+            local_filepath = os.path.join(f'{dst_dir_list[i]}/csv', str(filename))  # Convert to the same type and join paths
 
             # skip downloading if csv is already exists
             if not os.path.exists(local_filepath):
