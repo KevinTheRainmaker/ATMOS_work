@@ -49,6 +49,8 @@ GIST 지구환경공학과 ATMOS LAB에서 <strong>수동으로 진행하던 CO2
 
 다운로드 받게 되는 데이터는 <strong>txt 포맷의 summary와 ghg 포맷의 raw 데이터</strong>입니다. 이 중 ghg 포맷은 <strong>LI-COR Biosciences의 커스텀 파일 포맷</strong>으로, 정보를 담은 .data 파일을 포함하고 있는 archive 파일입니다. 이를 사람이 확인 가능한 csv 포맷으로 변환하기 위해서는 이를 압축 해제하여 .data 파일을 추출한 후 열 별로 읽어와서 csv로 저장해야 합니다.
 
+\* 관련 공식문서: https://www.licor.com/env/support/EddyPro/topics/ghg-file-format.html
+
 전체를 압축해제 할 경우 불필요한 데이터가 모두 나오게 되어 번잡해지므로 .data 포맷만을 가져올 수 있도록 하였습니다. .data 포맷은 헤더를 가진 ASCII 테이블 형태로, 공식 사이트에서는 변환 시 메타 데이터 또한 필요하다고 명시되어 있으나 실험 결과 메타 데이터 없이도 무난히 변환이 수행되는 것을 확인했습니다.
 
 다만, <strong>일부 데이터의 경우 data 추출이 실패하는 경우가 발생</strong>했기에, 이를 예외 처리하여 failed list에 추가하도록 하였습니다.
