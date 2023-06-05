@@ -12,6 +12,7 @@ import dropbox
 import zipfile
 import chardet
 import csv
+import shutil
 
 # add environment variables for access
 os.environ['DATA_DIR'] = './temp'
@@ -79,6 +80,32 @@ def ghg_to_csv(zip_file):
         failed = os.path.basename(zip_file)
         print(f'"{failed}" can not be converted. Please check it manually.')
         return failed
+
+def zip_csv_dir(directory, today):
+    # zip file name
+    zip_filename = f"{directory}/{today}_csv.zip"
+
+    # create temporal directory to contain csvs
+    temp_directory = f"{directory}/csv_temp"
+    os.makedirs(temp_directory, exist_ok=True)
+
+    # seraching the files in directory
+    for filename in os.listdir(directory):
+        filepath = os.path.join(directory, filename)
+        
+        # check the prior
+        if filename.startswith(str(today)):
+            # move the files into temporal directory
+            shutil.move(filepath, temp_directory)
+
+    # compress temporal directory
+    if len(os.listdir(temp_directory)) == 0:
+        print('###WARNING###\nCSV folder is empty')
+    else:
+        shutil.make_archive(zip_filename, "zip", temp_directory)
+
+    # delete temporal directory
+    shutil.rmtree(temp_directory)
 
 # SSH Client for connection test
 # server, port, username and password are saved in the config.json
@@ -163,14 +190,18 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
     logging(f'\nGHG has been converted. (elapsed time: {time.time() - start})\nLocal time: {get_time()}\n')
     logging(f'\nThese are the failed list: {failed_list}\n')
 
-    target_formats = ['.data', '.ghg']  # format to delete
+    # target_formats = ['.data', '.ghg']  # format to delete
+    target_formats = ['.data']  # format to delete
 
     for filename in os.listdir(dst_dir_list[1]):
         for target_format in target_formats:
-            # delete the target format files if it didn;t exists on the failed list
+            # delete the target format files if it didn't exists on the failed list
             if filename.endswith(target_format) and filename not in failed_list: 
                 file_path = os.path.join(dst_dir_list[1], filename)
                 os.remove(file_path)
+
+    csv_path = f'{dst_dir_list[i]}/csv'
+    zip_csv_dir(csv_path, today)
 
     # Using Dropbox API
     # ACCESS_KEY, REFRESH_TOKEN, APP_KEY and APP_SECRET are saved in the config.json
@@ -239,9 +270,13 @@ def scheduling(time_set, src_dir_list, dst_dir_list):
     while True:
         # pending the process until the next scheduled time
         schedule.run_pending()
+
+        next_run = schedule.next_run()
+        formatted_next_run = next_run.strftime('%Y-%m-%d %H:%M')
+        
         for i in range(12):
             time.sleep(0.15)
-            print(f'\rThe download will be started at {schedule.next_run()}  {animation[i % len(animation)]}', end="")
+            print(f'\rThe download will be started at {formatted_next_run}  {animation[i % len(animation)]}', end="")
 
 # get relative path to access external files
 def get_relative_path(file_name):
