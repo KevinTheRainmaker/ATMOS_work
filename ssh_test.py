@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 import sys
 from scp import SCPClient
-import dropbox
+# import dropbox
 import zipfile
 import chardet
 import csv
@@ -16,13 +16,12 @@ import shutil
 
 # add environment variables for access
 os.environ['DATA_DIR'] = './temp'
-os.environ['DROPBOX_DESTINATION'] = '/CO2'
+# os.environ['DROPBOX_DESTINATION'] = '/CO2'
 
 # return current time in hour:month:second form
 def get_time():
     now = datetime.datetime.now()
     now = now.strftime("%H:%M:%S")
-    
     return now
 
 # logging the intermediate results
@@ -31,6 +30,14 @@ def logging(log):
     with open('./temp/log.txt', 'a') as f:
         f.write(log)
 
+def elapsed_time(elapsed_seconds):
+    elapsed_minutes = int(elapsed_seconds // 60)
+    elapsed_seconds = int(elapsed_seconds % 60)
+
+    elapsed_time_formatted = f"{elapsed_minutes:02d}:{elapsed_seconds:02d}"
+    
+    return elapsed_time_formatted
+ 
 # convert GHG format to CSV format
 # if translation failed, return GHG file name
 def ghg_to_csv(zip_file):
@@ -62,50 +69,50 @@ def ghg_to_csv(zip_file):
         
         encoding = result['encoding']
 
-        # read data file and write to csv
-        with open(data_path, 'r', encoding=encoding) as data_form, open(csv_path, 'w', newline='', encoding='utf-8') as csv_form:
-            writer = csv.writer(csv_form)
+        if not os.path.exists(csv_path):
+            # read data file and write to csv
+            with open(data_path, 'r', encoding=encoding) as data_form, open(csv_path, 'w', newline='', encoding='utf-8') as csv_form:
+                writer = csv.writer(csv_form)
 
-            for line in data_form:
-                line = line.strip()
+                for line in data_form:
+                    line = line.strip()
 
-                if line.startswith('#') or not line:
-                    continue
+                    if line.startswith('#') or not line:
+                        continue
 
-                data = line.split('\t')
+                    data = line.split('\t')
 
-                writer.writerow(data)   
+                    writer.writerow(data)   
     except:
         # return the name of ghg file if translation failed
         failed = os.path.basename(zip_file)
-        print(f'"{failed}" can not be converted. Please check it manually.')
         return failed
 
-def zip_csv_dir(directory, today):
-    # zip file name
-    zip_filename = f"{directory}/{today}_csv.zip"
+# def zip_csv_dir(directory, today):
+#     # zip file name
+#     zip_filename = f"{directory}/{today}_csv.zip"
 
-    # create temporal directory to contain csvs
-    temp_directory = f"{directory}/csv_temp"
-    os.makedirs(temp_directory, exist_ok=True)
+#     # create temporal directory to contain csvs
+#     temp_directory = f"{directory}/csv_temp"
+#     os.makedirs(temp_directory, exist_ok=True)
 
-    # seraching the files in directory
-    for filename in os.listdir(directory):
-        filepath = os.path.join(directory, filename)
+#     # seraching the files in directory
+#     for filename in os.listdir(directory):
+#         filepath = os.path.join(directory, filename)
         
-        # check the prior
-        if filename.startswith(str(today)):
-            # move the files into temporal directory
-            shutil.move(filepath, temp_directory)
+#         # check the prior
+#         if filename.startswith(str(today)):
+#             # move the files into temporal directory
+#             shutil.move(filepath, temp_directory)
 
-    # compress temporal directory
-    if len(os.listdir(temp_directory)) == 0:
-        print('###WARNING###\nCSV folder is empty')
-    else:
-        shutil.make_archive(zip_filename, "zip", temp_directory)
+#     # compress temporal directory
+#     if len(os.listdir(temp_directory)) == 0:
+#         print('###WARNING###\nCSV folder is empty')
+#     else:
+#         shutil.make_archive(zip_filename, "zip", temp_directory)
 
-    # delete temporal directory
-    shutil.rmtree(temp_directory)
+#     # delete temporal directory
+#     shutil.rmtree(temp_directory)
 
 # SSH Client for connection test
 # server, port, username and password are saved in the config.json
@@ -121,7 +128,7 @@ def progress(filename, size, sent):
 
 # main function of automation
 # detailed explanation can be found in README.md
-def job(today, config, src_dir_list:list, dst_dir_list:list):
+def job(today, time_buffer, config, src_dir_list:list, dst_dir_list:list):
     # ssh connection test
     logging(f'\n------{today}------\n')
     logging(f'\nTry to log in {config["USER_NAME"]}@{config["HOST_IP"]}..\n')
@@ -139,6 +146,12 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
     # create scp client
     scp = SCPClient(ssh.get_transport(), progress=progress)
     
+    date_list = [str(today)]
+
+    for i in range(int(time_buffer)):
+        date = today - datetime.timedelta(days=i+1)
+        date_list.append(str(date))
+
     for i in range(len(src_dir_list)):
         start = time.time()
         
@@ -146,20 +159,29 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
             for j in range(len(src_dir_list)):
                 src_dir_list[j] = src_dir_list[j].replace('\\', '/')
 
-        # listing the files that need to be downloaded
-        _, stdout, _ = ssh.exec_command(f'ls {src_dir_list[i]}/{str(today)}*')#[:-1]
-        result = stdout.read().split()
+        result = []
+        for date in date_list:
+            command = f'ls {src_dir_list[i]}/{str(date)}*'
+            _, stdout, _ = ssh.exec_command(command)
+            output = stdout.read().split()
+            result.extend(output)
 
         for per_result in result:
             filename = os.path.basename(per_result)  # Extract file name
-            filename = str(filename).replace('ghg', 'csv')
+            filename = filename.decode('utf-8').replace('.ghg', '.csv')
             local_filepath = os.path.join(f'{dst_dir_list[i]}/csv', str(filename))  # Convert to the same type and join paths
+
+            if sys.platform == 'win32':
+                local_filepath = local_filepath.replace('\\', '/')
 
             # skip downloading if csv is already exists
             if not os.path.exists(local_filepath):
                 scp.get(per_result, dst_dir_list[i], recursive=True)
 
-        logging(f'\n"{src_dir_list[i]}" has been downloaded. (elapsed time: {time.time() - start})\nLocal time: {get_time()}\n')
+        elapsed_seconds = time.time() - start
+        elapsed_time_formatted = elapsed_time(elapsed_seconds)
+
+        logging(f'\n"{src_dir_list[i]}" has been downloaded. (elapsed time: {elapsed_time_formatted})\nLocal time: {get_time()}\n')
     
     # close the connections
     scp.close()        
@@ -187,11 +209,14 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
                 if (result != None):
                     failed_list.append(result)
     
-    logging(f'\nGHG has been converted. (elapsed time: {time.time() - start})\nLocal time: {get_time()}\n')
+    elapsed_seconds = time.time() - start
+    elapsed_time_formatted = elapsed_time(elapsed_seconds)
+
+    logging(f'\nGHG has been converted. (elapsed time: {elapsed_time_formatted})\nLocal time: {get_time()}\n')
     logging(f'\nThese are the failed list: {failed_list}\n')
 
     # target_formats = ['.data', '.ghg']  # format to delete
-    target_formats = ['.data']  # format to delete
+    target_formats = ['.data']
 
     for filename in os.listdir(dst_dir_list[1]):
         for target_format in target_formats:
@@ -200,9 +225,11 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
                 file_path = os.path.join(dst_dir_list[1], filename)
                 os.remove(file_path)
 
-    csv_path = f'{dst_dir_list[i]}/csv'
-    zip_csv_dir(csv_path, today)
+    # csv_path = f'{dst_dir_list[i]}/csv'
+    # zip_csv_dir(csv_path, today)
 
+    ##################THIS PART HAS BEEN DEPRICATED SINCE THE CLIENT'S NEEDS CHANGED################
+    """
     # Using Dropbox API
     # ACCESS_KEY, REFRESH_TOKEN, APP_KEY and APP_SECRET are saved in the config.json
     dbx = dropbox.Dropbox(oauth2_access_token=config["ACCESS_KEY"],
@@ -247,19 +274,23 @@ def job(today, config, src_dir_list:list, dst_dir_list:list):
                         time.sleep(3)
 
     logging(f"\nData successfully uploaded to dropbox. (saved directory: {dropbox_destination})\nLocal time: {get_time()}\n")
+    """
+    ################################################################################################
+    
     os.system('cls') # clear the console output
 
 # scheduling for automation
 def scheduling(time_set, src_dir_list, dst_dir_list):
     repeat_type = time_set['REPEAT_TYPE']
     clock = time_set['SCHEDULE_SETTING']
+    time_buffer = time_set['TIME_BUFFER']
     
     if repeat_type == 'day':
-        schedule.every().day.at(clock).do(lambda: job(today, config, src_dir_list, dst_dir_list))
+        schedule.every().day.at(clock).do(lambda: job(today, time_buffer, config, src_dir_list, dst_dir_list))
     elif repeat_type == 'hour':
-        schedule.every(int(clock)).hours.do(lambda: job(today, config, src_dir_list, dst_dir_list))
+        schedule.every(int(clock)).hours.do(lambda: job(today, time_buffer, config, src_dir_list, dst_dir_list))
     elif repeat_type == 'minute':
-        schedule.every(int(clock)).minutes.do(lambda: job(today, config, src_dir_list, dst_dir_list))
+        schedule.every(int(clock)).minutes.do(lambda: job(today, time_buffer, config, src_dir_list, dst_dir_list))
     else:
         logging(f'\nWrong repeat type({repeat_type}).\nrepeat_type must be in ["day", "hour", "minute"]\n')
         quit()
