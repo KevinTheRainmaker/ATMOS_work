@@ -63,13 +63,14 @@ def ghg_to_csv(zip_file):
         with zipfile.ZipFile(zip_file, 'r') as zip_ref:
             zip_ref.extract(data_file, path=str(base_path))
             
-        # detect encoding of the .data file
-        with open(data_path, 'rb') as file:
-            result = chardet.detect(file.read())
-        
-        encoding = result['encoding']
-
         if not os.path.exists(csv_path):
+                
+            # detect encoding of the .data file
+            with open(data_path, 'rb') as file:
+                result = chardet.detect(file.read())
+            
+            encoding = result['encoding']
+
             # read data file and write to csv
             with open(data_path, 'r', encoding=encoding) as data_form, open(csv_path, 'w', newline='', encoding='utf-8') as csv_form:
                 writer = csv.writer(csv_form)
@@ -82,7 +83,9 @@ def ghg_to_csv(zip_file):
 
                     data = line.split('\t')
 
-                    writer.writerow(data)   
+                    writer.writerow(data)
+        else:
+            pass
     except:
         # return the name of ghg file if translation failed
         failed = os.path.basename(zip_file)
@@ -165,7 +168,7 @@ def job(today, time_buffer, config, src_dir_list:list, dst_dir_list:list):
 
     while(True):
         try:
-            ssh = createSSHClient(config['HOST_IP'], port=config['CONN_PORT'], username=config['USER_NAME'], password=default_con['PASSWORD'])
+            ssh = createSSHClient(config['HOST_IP'], port=config['CONN_PORT'], username=config['USER_NAME'], password=config['PASSWORD'])
             break
         except:
             logging(f'\nConnection failed... Retrying in 30 seconds.\nLocal time: {get_time()}\n')
@@ -310,7 +313,7 @@ def job(today, time_buffer, config, src_dir_list:list, dst_dir_list:list):
     os.system('cls') # clear the console output
 
 # scheduling for automation
-def scheduling(time_set, src_dir_list, dst_dir_list):
+def scheduling(time_set, config, src_dir_list, dst_dir_list):
     repeat_type = time_set['REPEAT_TYPE']
     clock = time_set['SCHEDULE_SETTING']
     time_buffer = time_set['TIME_BUFFER']
@@ -396,11 +399,11 @@ if __name__ == '__main__':
     # load configurations
     with open(config_path, 'r') as f:
         config = json.load(f)
-        # config = config['DEFAULT']
+        config = config['DEFAULT']
 
     with open(time_path, 'r') as f:
         time_set = json.load(f)
         time_set = time_set['DEFAULT']
     
     # start scheduling
-    scheduling(time_set, src_dir_list, dst_dir_list)
+    scheduling(time_set, config, src_dir_list, dst_dir_list)
