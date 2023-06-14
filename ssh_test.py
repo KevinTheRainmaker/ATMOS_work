@@ -126,45 +126,46 @@ def createSSHClient(server, port, username, password):
 def progress(filename, size, sent):
     sys.stdout.write("%s\'s progress: %.2f%%   \r" % (filename, float(sent)/float(size)*100) )
 
-def move_folder_contents_to_team_account(folder_path, team_email, access_token):
-    try:
-        # Dropbox 인증
-        dbx = dropbox.Dropbox(access_token)
+# def move_folder_contents_to_team_account(folder_path, team_email, access_token):
+#     try:
+#         # Dropbox 인증
+#         dbx = dropbox.Dropbox(access_token)
 
-        # 공유 폴더 내용 가져오기
-        folder_entries = dbx.files_list_folder(folder_path).entries
+#         # 공유 폴더 내용 가져오기
+#         folder_entries = dbx.files_list_folder(folder_path).entries
 
-        # 각 파일을 팀 계정으로 이동시키기
-        for entry in folder_entries:
-            if isinstance(entry, dropbox.files.FileMetadata):
-                file_path = entry.path_lower
-                file_name = file_path.split('/')[-1]
-                new_path = '/{}'.format(file_name)
+#         # 각 파일을 팀 계정으로 이동시키기
+#         for entry in folder_entries:
+#             if isinstance(entry, dropbox.files.FileMetadata):
+#                 file_path = entry.path_lower
+#                 file_name = file_path.split('/')[-1]
+#                 new_path = '/{}'.format(file_name)
 
-                # 파일 이동
-                dbx.files_move(file_path, new_path, allow_shared_folder=True)
+#                 # 파일 이동
+#                 dbx.files_move(file_path, new_path, allow_shared_folder=True)
 
-                # 팀 계정으로 공유 설정
-                sharing_settings = dropbox.sharing.SharedLinkSettings(team_member_only=True)
-                shared_link = dbx.sharing_create_shared_link(new_path)
-                dbx.sharing_add_folder_member(shared_link.url, team_email, settings=sharing_settings)
+#                 # 팀 계정으로 공유 설정
+#                 sharing_settings = dropbox.sharing.SharedLinkSettings(team_member_only=True)
+#                 shared_link = dbx.sharing_create_shared_link(new_path)
+#                 dbx.sharing_add_folder_member(shared_link.url, team_email, settings=sharing_settings)
 
-        print("파일들이 성공적으로 팀 계정으로 이동되었습니다.")
+#         print("파일들이 성공적으로 팀 계정으로 이동되었습니다.")
 
-    except AuthError as e:
-        print("드롭박스 API 인증에 실패했습니다.")
-        print(e)
+#     except AuthError as e:
+#         print("드롭박스 API 인증에 실패했습니다.")
+#         print(e)
 
 # main function of automation
 # detailed explanation can be found in README.md
 def job(today, time_buffer, config, src_dir_list:list, dst_dir_list:list):
+
     # ssh connection test
     logging(f'\n------{today}------\n')
-    logging(f'\nTry to log in {default_c["USER_NAME"]}@{default_c["HOST_IP"]}..\n')
+    logging(f'\nTry to log in {config["USER_NAME"]}@{config["HOST_IP"]}..\n')
 
     while(True):
         try:
-            ssh = createSSHClient(default_con['HOST_IP'], port=default_con['CONN_PORT'], username=default_con['USER_NAME'], password=default_con['PASSWORD'])
+            ssh = createSSHClient(config['HOST_IP'], port=config['CONN_PORT'], username=config['USER_NAME'], password=default_con['PASSWORD'])
             break
         except:
             logging(f'\nConnection failed... Retrying in 30 seconds.\nLocal time: {get_time()}\n')
