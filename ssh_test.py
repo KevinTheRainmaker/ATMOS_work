@@ -160,8 +160,10 @@ def progress(filename, size, sent):
 
 # main function of automation
 # detailed explanation can be found in README.md
-def job(today, time_buffer, config, src_dir_list:list, dst_dir_list:list):
+def job(time_buffer, config, src_dir_list:list, dst_dir_list:list):
 
+    today = datetime.date.today()
+    
     # ssh connection test
     logging(f'\n------{today}------\n')
     logging(f'\nTry to log in {config["USER_NAME"]}@{config["HOST_IP"]}..\n')
@@ -319,11 +321,11 @@ def scheduling(time_set, config, src_dir_list, dst_dir_list):
     time_buffer = time_set['TIME_BUFFER']
     
     if repeat_type == 'day':
-        schedule.every().day.at(clock).do(lambda: job(today, time_buffer, config, src_dir_list, dst_dir_list))
+        schedule.every().day.at(clock).do(lambda: job(time_buffer, config, src_dir_list, dst_dir_list))
     elif repeat_type == 'hour':
-        schedule.every(int(clock)).hours.do(lambda: job(today, time_buffer, config, src_dir_list, dst_dir_list))
+        schedule.every(int(clock)).hours.do(lambda: job(time_buffer, config, src_dir_list, dst_dir_list))
     elif repeat_type == 'minute':
-        schedule.every(int(clock)).minutes.do(lambda: job(today, time_buffer, config, src_dir_list, dst_dir_list))
+        schedule.every(int(clock)).minutes.do(lambda: job(time_buffer, config, src_dir_list, dst_dir_list))
     else:
         logging(f'\nWrong repeat type({repeat_type}).\nrepeat_type must be in ["day", "hour", "minute"]\n')
         quit()
