@@ -160,10 +160,38 @@ def progress(filename, size, sent):
 
 # main function of automation
 # detailed explanation can be found in README.md
-def job(time_buffer, config, src_dir_list:list, dst_dir_list:list):
-
-    today = datetime.date.today()
+def job(time_buffer, config):
     
+    # for time logging
+    today = datetime.date.today()
+
+    # source directories (server)
+    src_dir_list=[f'data/summaries', f'data/raw/{today.year}/{str(today.month).zfill(2)}']
+    
+    # destination directories (local)
+    dst_dir_list=['temp/summaries', f'temp/raw/{today.year}/{str(today.month).zfill(2)}']
+    
+    if sys.platform == 'win32':
+        for i in range(len(src_dir_list)):
+            src_dir_list[i] = src_dir_list[i].replace('/', '\\')
+        for i in range(len(dst_dir_list)):
+            dst_dir_list[i] = dst_dir_list[i].replace('/', '\\')
+
+    # make destination directories at local
+    for dst_dir in dst_dir_list:
+        path = Path(dst_dir)
+        path.mkdir(parents=True, exist_ok=True)
+
+    # get the path to the file within the executable
+    csv_path = get_relative_path(f'{dst_dir_list[1]}/csv')
+
+    if sys.platform == 'win32':
+        csv_path = csv_path.replace('\\','/')
+
+    # create csv directory
+    csv_path = Path(csv_path)
+    csv_path.mkdir(parents=True, exist_ok=True)
+
     # ssh connection test
     logging(f'\n------{today}------\n')
     logging(f'\nTry to log in {config["USER_NAME"]}@{config["HOST_IP"]}..\n')
@@ -197,6 +225,7 @@ def job(time_buffer, config, src_dir_list:list, dst_dir_list:list):
         result = []
         for date in date_list:
             command = f'ls {src_dir_list[i]}/{str(date)}*'
+            print(command)
             _, stdout, _ = ssh.exec_command(command)
             output = stdout.read().split()
             result.extend(output)
@@ -223,7 +252,7 @@ def job(time_buffer, config, src_dir_list:list, dst_dir_list:list):
     ssh.close()
     
     # convert ghg to csv
-    directory = 'temp/raw/2023/'
+    directory = f'temp/raw/{today.year}'
     logging(f'\nTranslating ghg to csv...\nLocal time: {get_time()}\n')
     
     start = time.time()
@@ -315,17 +344,17 @@ def job(time_buffer, config, src_dir_list:list, dst_dir_list:list):
     os.system('cls') # clear the console output
 
 # scheduling for automation
-def scheduling(time_set, config, src_dir_list, dst_dir_list):
+def scheduling(time_set, config):
     repeat_type = time_set['REPEAT_TYPE']
     clock = time_set['SCHEDULE_SETTING']
     time_buffer = time_set['TIME_BUFFER']
     
     if repeat_type == 'day':
-        schedule.every().day.at(clock).do(lambda: job(time_buffer, config, src_dir_list, dst_dir_list))
+        schedule.every().day.at(clock).do(lambda: job(time_buffer, config))
     elif repeat_type == 'hour':
-        schedule.every(int(clock)).hours.do(lambda: job(time_buffer, config, src_dir_list, dst_dir_list))
+        schedule.every(int(clock)).hours.do(lambda: job(time_buffer, config))
     elif repeat_type == 'minute':
-        schedule.every(int(clock)).minutes.do(lambda: job(time_buffer, config, src_dir_list, dst_dir_list))
+        schedule.every(int(clock)).minutes.do(lambda: job(time_buffer, config))
     else:
         logging(f'\nWrong repeat type({repeat_type}).\nrepeat_type must be in ["day", "hour", "minute"]\n')
         quit()
@@ -362,41 +391,15 @@ def read_json_file(file_path):
     return data
 
 if __name__ == '__main__':
-    # for time logging
-    today = datetime.date.today()
 
-    # source directories (server)
-    src_dir_list=[f'data/summaries', f'data/raw/{today.year}/{str(today.month).zfill(2)}']
-    
-    # destination directories (local)
-    dst_dir_list=['temp/summaries', f'temp/raw/{today.year}/{str(today.month).zfill(2)}']
-    
-    if sys.platform == 'win32':
-        for i in range(len(src_dir_list)):
-            src_dir_list[i] = src_dir_list[i].replace('/', '\\')
-        for i in range(len(dst_dir_list)):
-            dst_dir_list[i] = dst_dir_list[i].replace('/', '\\')
-
-    # make destination directories at local
-    for dst_dir in dst_dir_list:
-        path = Path(dst_dir)
-        path.mkdir(parents=True, exist_ok=True)
-
-    # get the path to the file within the executable
-    csv_path = get_relative_path(f'{dst_dir_list[1]}/csv')
     config_path = get_relative_path('config.json')
     time_path = get_relative_path('time_set.json')
     log_path = get_relative_path('temp/log.txt')
     
     if sys.platform == 'win32':
-        csv_path = csv_path.replace('\\','/')
         config_path = config_path.replace('\\','/')
         time_path = time_path.replace('\\','/')
         log_path = log_path.replace('\\','/')
-
-    # create csv directory
-    csv_path = Path(csv_path)
-    csv_path.mkdir(parents=True, exist_ok=True)
 
     # load configurations
     with open(config_path, 'r') as f:
@@ -408,4 +411,4 @@ if __name__ == '__main__':
         time_set = time_set['DEFAULT']
     
     # start scheduling
-    scheduling(time_set, config, src_dir_list, dst_dir_list)
+    scheduling(time_set, config)
