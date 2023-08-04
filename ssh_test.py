@@ -166,10 +166,10 @@ def job(time_buffer, config):
     today = datetime.date.today()
 
     # source directories (server)
-    src_dir_list=[f'data/summaries', f'data/raw/{today.year}/{str(today.month).zfill(2)}']
+    src_dir_list=[f'data/summaries', f'data/raw/']
     
     # destination directories (local)
-    dst_dir_list=['temp/summaries', f'temp/raw/{today.year}/{str(today.month).zfill(2)}']
+    dst_dir_list=['temp/summaries', f'temp/raw/']
     
     if sys.platform == 'win32':
         for i in range(len(src_dir_list)):
@@ -219,16 +219,19 @@ def job(time_buffer, config):
         start = time.time()
         
         if sys.platform == 'win32':
-            for j in range(len(src_dir_list)):
-                src_dir_list[j] = src_dir_list[j].replace('\\', '/')
+            src_dir_list[i] = src_dir_list[i].replace('\\', '/')
 
         result = []
         for date in date_list:
-            command = f'ls {src_dir_list[i]}/{str(date)}*'
-            print(command)
-            _, stdout, _ = ssh.exec_command(command)
-            output = stdout.read().split()
-            result.extend(output)
+            command_sum = f'ls {src_dir_list[0]}/{str(date)}*'
+            command_raw = f'ls {src_dir_list[1]}/{str(date.year)}/{str(date.month)}/{str(date)}*'
+            # print(command)
+            _, stdout, _ = ssh.exec_command(command_sum)
+            output_sum = stdout.read().split()
+            _, stdout, _ = ssh.exec_command(command_raw)
+            output_raw = stdout.read().split()
+            result.extend(output_sum)
+            result.extend(output_raw)
 
         for per_result in result:
             filename = os.path.basename(per_result)  # Extract file name
