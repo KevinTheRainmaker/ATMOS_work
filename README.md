@@ -58,15 +58,11 @@ GIST 지구환경공학과 ATMOS LAB에서 <strong>수동으로 진행하던 CO2
 data-to-csv 변환이 완료된 이후에는 저장 공간 절약을 위해 <strong>csv 외 포맷을 삭제</strong>하도록 하였습니다. 다만 이때 failed list에서 관리되는 파일의 경우 별도의 처리 작업을 할 수 있도록 삭제를 하지 않도록 하였습니다.
 
 <br>
-
+<!--
 ### 4. 드롭박스 업로드
-
 드롭박스 API를 이용해 실행 로그파일과 데이터를 지정된 드롭박스에 업로드하도록 하였습니다. 초기에는 Access Token만을 이용하였기에 Expiration time이 지나게 되면 접속이 불가해지는 이슈가 있었기에 Postman을 통한 HTTP 리퀘스트를 보내어 Refresh Token을 발급 받아 추가로 이용함으로써 Access Token을 갱신할 수 있도록 하였습니다.
-
 해당 토큰 값은 `config.json`에 저장되어 있으며, <strong>해당 파일 내의 정보는 외부 공개되지 않도록 주의해주시기 바랍니다.</strong> (외부 공개될 경우 공격으로부터 사용자를 보호하기 위해 토큰이 삭제될 수 있습니다.)
-
 데이터의 디렉터리 구조는 다음과 같으며, 기본적으로 서버측 데이터 구조와 동일합니다.
-
 ```
 Dropbox
     └── CO2
@@ -83,14 +79,11 @@ Dropbox
             ├──2023-06-04_AIU-1905_EP-Summary.txt
             └── ...
 ```
-
 데이터 업로드가 완료되는 경우 데이터가 업로드된 시각을 로그에 기록한 후 콘솔에 출력된 내용을 지우고 0번으로 돌아가게 됩니다.
-
 최종 로그의 예시는 다음과 같습니다.
-
 <img width="450" alt="image" src="https://github.com/KevinTheRainmaker/ATMOS_work/assets/76294398/435060fa-bcda-40ec-b851-e78c11c4c712">
-
 <br>
+-->
 
 ## Future Works
 
