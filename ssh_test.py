@@ -384,6 +384,15 @@ def read_json_file(file_path):
         data = json.load(file)
     return data
 
+def get_json_data(config_path: str):
+    with open(config_path, 'r', encoding='utf-8') as f:
+        contents = f.read()
+        while "/*" in contents:
+            preComment, postComment = contents.split('/*', 1)
+            contents = preComment + postComment.split('*/', 1)[1]
+        json_data = json.loads(contents.replace("'", '"'))
+        return json_data['DEFAULT']
+
 if __name__ == '__main__':
 
     config_path = get_relative_path('config.json')
@@ -391,13 +400,8 @@ if __name__ == '__main__':
     log_path = get_relative_path(os.path.join('temp','log.txt'))
     
     # load configurations
-    with open(config_path, 'r') as f:
-        config = json.load(f)
-        config = config['DEFAULT']
-
-    with open(time_path, 'r') as f:
-        time_set = json.load(f)
-        time_set = time_set['DEFAULT']
+    config = get_json_data(config_path)
+    time_set = get_json_data(time_path)
     
     # start scheduling
     scheduling(time_set, config)
