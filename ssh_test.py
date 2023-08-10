@@ -213,8 +213,8 @@ def job(time_buffer, config):
         csv_filepath = os.path.join(dst_dir, 'raw', 'csv', str(csv_file))  # Convert to the same type and join paths
 
         # make destination directories at local
-        # sum_dir = Path(os.path.join(dst_dir, 'summaries'))
-        # sum_dir.mkdir(parents=True, exist_ok=True)
+        sum_dir = Path(os.path.join(dst_dir, 'summaries'))
+        sum_dir.mkdir(parents=True, exist_ok=True)
 
         # get the path to the file within the executable
         csv_path = get_relative_path(str(os.path.join('temp','csv')))
