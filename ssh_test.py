@@ -192,6 +192,10 @@ def job(time_buffer, config):
 
     start = time.time()
 
+    # make destination directories at local
+    sum_dir = Path(os.path.join(dst_dir, 'summaries'))
+    sum_dir.mkdir(parents=True, exist_ok=True)
+
     for date_ent in date_list:
         year, month, _ = date_ent.split('-')
         scp.get(f"{src_dir}/summaries/{date_ent}_AIU-1905_EP-Summary.txt", os.path.join(dst_dir, 'summaries'), recursive=True)
@@ -201,6 +205,9 @@ def job(time_buffer, config):
         _, stdout, _ = ssh.exec_command(command_raw)
         output_raw = stdout.read().split()
         raw_results.extend(output_raw)
+    
+    elapsed_seconds = time.time() - start
+    elapsed_time_formatted = elapsed_time(elapsed_seconds)
     
     logging(f'\n"summaries" has been downloaded to "{dst_dir}". (elapsed time: {elapsed_time_formatted})\nLocal time: {get_time()}\n')
     
@@ -212,9 +219,6 @@ def job(time_buffer, config):
 
         csv_filepath = os.path.join(dst_dir, 'raw', 'csv', str(csv_file))  # Convert to the same type and join paths
 
-        # make destination directories at local
-        sum_dir = Path(os.path.join(dst_dir, 'summaries'))
-        sum_dir.mkdir(parents=True, exist_ok=True)
 
         # get the path to the file within the executable
         csv_path = get_relative_path(str(os.path.join('temp','csv')))
