@@ -50,14 +50,9 @@ def ghg_to_csv(zip_file):
 
     csv_file = base_name
     csv_file = csv_file.replace('ghg','csv')
-    csv_path = os.path.join(base_path, 'csv')
+    csv_path = os.path.join('./temp', 'csv')
     csv_path = os.path.join(csv_path, csv_file)
     
-    if sys.platform == 'win32':
-        base_path = base_path.replace('\\', '/')
-        data_path = data_path.replace('\\', '/')
-        csv_path = csv_path.replace('\\', '/')
-        
     try:
         # extract .data file from .ghg
         with zipfile.ZipFile(zip_file, 'r') as zip_ref:
@@ -190,8 +185,6 @@ def job(time_buffer, config):
     scp = SCPClient(ssh.get_transport(), progress=progress)
     
     date_list = [str(today)]
-    month_list = [str(today.month)]
-    year_list = [str(today.year)]
 
     for i in range(int(time_buffer)):
         date = today - datetime.timedelta(days=i+1)
@@ -201,19 +194,18 @@ def job(time_buffer, config):
 
     for date_ent in date_list:
         year, month, _ = date_ent.split('-')
-        print(year,month)
-        year_list.append(str(year))
-        month_list.append(str(month))
+        scp.get(f"{src_dir}/summaries/{date_ent}*", os.path.join(dst_dir), recursive=True)
+        
 
         command_raw = f'ls {src_dir}/raw/{str(year)}/{str(month)}/{str(date_ent)}*'
         _, stdout, _ = ssh.exec_command(command_raw)
         output_raw = stdout.read().split()
         raw_results.extend(output_raw)
-
-    scp.get(f"{src_dir}/summaries/", os.path.join(dst_dir), recursive=True)
-
+    
+    logging(f'\n"summaries" has been downloaded to "{dst_dir}". (elapsed time: {elapsed_time_formatted})\nLocal time: {get_time()}\n')
+    
     for raw_file_ent in raw_results:
-        print(raw_file_ent)
+        # print(raw_file_ent)
         raw_file = os.path.basename(raw_file_ent)  # Extract file name
 
         csv_file = raw_file.decode('utf-8').replace('.ghg', '.csv')
@@ -221,8 +213,8 @@ def job(time_buffer, config):
         csv_filepath = os.path.join(dst_dir, 'raw', 'csv', str(csv_file))  # Convert to the same type and join paths
 
         # make destination directories at local
-        sum_dir = Path(os.path.join(dst_dir, 'summaries'))
-        sum_dir.mkdir(parents=True, exist_ok=True)
+        # sum_dir = Path(os.path.join(dst_dir, 'summaries'))
+        # sum_dir.mkdir(parents=True, exist_ok=True)
 
         # get the path to the file within the executable
         csv_path = get_relative_path(str(os.path.join('temp','csv')))
@@ -242,7 +234,7 @@ def job(time_buffer, config):
     elapsed_seconds = time.time() - start
     elapsed_time_formatted = elapsed_time(elapsed_seconds)
 
-    logging(f'\n"{src_dir}" has been downloaded to "{dst_dir}". (elapsed time: {elapsed_time_formatted})\nLocal time: {get_time()}\n')
+    logging(f'\n"raw" has been downloaded to "{dst_dir}". (elapsed time: {elapsed_time_formatted})\nLocal time: {get_time()}\n')
     
     # close the connections
     scp.close()        
@@ -276,7 +268,7 @@ def job(time_buffer, config):
     # target_formats = ['.data', '.ghg']  # format to delete
     target_formats = ['.data']
 
-    for filename in os.listdir(local_raw_dir):
+    for filename in os.listdir(dst_dir):
         for target_format in target_formats:
             # delete the target format files if it didn't exists on the failed list
             if filename.endswith(target_format) and filename not in failed_list: 
@@ -335,7 +327,7 @@ def job(time_buffer, config):
     """
     ################################################################################################
     
-    # os.system('cls') # clear the console output
+    os.system('cls') # clear the console output
 
 # scheduling for automation
 def scheduling(time_set, config):
