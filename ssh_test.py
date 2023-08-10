@@ -194,7 +194,7 @@ def job(time_buffer, config):
 
     for date_ent in date_list:
         year, month, _ = date_ent.split('-')
-        scp.get(f"{src_dir}/summaries/{date_ent}*", os.path.join(dst_dir), recursive=True)
+        scp.get(f"{src_dir}/summaries/{date_ent}_AIU-1905_EP-Summary.txt", os.path.join(dst_dir), recursive=True)
         
 
         command_raw = f'ls {src_dir}/raw/{str(year)}/{str(month)}/{str(date_ent)}*'
