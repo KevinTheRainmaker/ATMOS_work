@@ -12,40 +12,32 @@ from scp import SCPClient
 import zipfile
 import chardet
 import csv
-import re
+import logging
 
-def get_next_index(file_name):
-    pattern = r"_(\d+)\.txt$"
-    match = re.search(pattern, file_name)
-    
-    if match:
-        return int(match.group(1)) + 1
+# get relative path to access external files
+def get_relative_path(file_name):
+    if getattr(sys, 'frozen', False):  
+        # when packaged as an executable
+        relative_path = os.path.dirname(sys.executable)
     else:
-        return 1
+        # when run directly as a script
+        relative_path = os.path.dirname(os.path.abspath(__file__))
+        
+    return os.path.join(relative_path, file_name)
 
-def generate_unique_filename(base_path):
-    index = 1
-    new_path = base_path
+def env_setting(data_path: str):    
+    # # load configurations
+    config_path = get_relative_path('config.json')
+    time_path = get_relative_path('time_set.json')
 
-    while os.path.exists(new_path):
-        index = get_next_index(new_path)
-        new_path = re.sub(r"_(\d+)\.txt$", f"_{index}.txt", new_path)
-
-    os.environ['LOG_PATH'] = new_path
-    
-    return new_path
-
-def env_setting(data_dir: str):
     # add environment variables for access
-    os.environ['DATA_DIR'] = data_dir
-    # os.environ['DROPBOX_DESTINATION'] = '/CO2'
+    os.environ['CONFIG_PATH'] = config_path
+    os.environ['TIME_PATH'] = time_path
+    os.environ['DATA_PATH'] = data_path
+    os.makedirs(data_path, exist_ok=True)
 
-    today = datetime.date.today()
-    log_name = generate_unique_filename(os.path.join(data_dir, f'log_{today}_1.txt'))
-    # create datafolder and log file
-    os.makedirs(data_dir, exist_ok=True)
-    with open(log_name, "w") as f:
-        f.write(f'------{today}------\n')
+    # set log file
+    logging.basicConfig(filename='ATMOS_Bot.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # return current time in hour:month:second form
 def get_time():
@@ -54,12 +46,12 @@ def get_time():
     return now
 
 # logging the intermediate results
-def logging(log):
-    data_dir = os.getenv('DATA_DIR', './data')
-    log_path = os.getenv('LOG_PATH')
-    print(log)
-    with open(log_path, 'a') as f:
-        f.write(log)
+# def logging(log):
+#     data_dir = os.getenv('DATA_DIR', 'data')
+#     log_path = os.getenv('LOG_PATH')
+#     print(log)
+#     with open(log_path, 'a') as f:
+#         f.write(log)
 
 def elapsed_time(elapsed_seconds):
     elapsed_minutes = int(elapsed_seconds // 60)
@@ -365,11 +357,13 @@ def job(time_buffer, config):
     os.system('cls') # clear the console output
 
 # scheduling for automation
-def scheduling(time_set, config):
+def scheduling(config, time_set):
     repeat_type = time_set['REPEAT_TYPE']
     clock = time_set['SCHEDULE_SETTING']
     time_buffer = time_set['TIME_BUFFER']
-    
+    print(repeat_type)
+    print(clock)
+    quit()
     if repeat_type == 'day':
         schedule.every().day.at(clock).do(lambda: job(time_buffer, config))
     elif repeat_type == 'hour':
@@ -394,17 +388,6 @@ def scheduling(time_set, config):
             time.sleep(0.15)
             print(f'\rThe download will be started at {formatted_next_run}  {animation[i % len(animation)]}', end="")
 
-# get relative path to access external files
-def get_relative_path(file_name):
-    if getattr(sys, 'frozen', False):  
-        # when packaged as an executable
-        relative_path = os.path.dirname(sys.executable)
-    else:
-        # when run directly as a script
-        relative_path = os.path.dirname(os.path.abspath(__file__))
-        
-    return os.path.join(relative_path, file_name)
-
 # read json file
 def read_json_file(file_path):
     with open(file_path, 'r') as file:
@@ -421,15 +404,10 @@ def get_json_data(config_path: str):
         return json_data['DEFAULT']
 
 if __name__ == '__main__':
-
-    # config_path = get_relative_path('config.json')
-    # time_path = get_relative_path('time_set.json')
-    # log_path = get_relative_path(os.path.join('temp','log.txt'))
-    
-    # # load configurations
-    # config = get_json_data(config_path)
-    # time_set = get_json_data(time_path)
-    
-    # # start scheduling
-    # scheduling(time_set, config)
     env_setting('./temp')
+    
+    config = os.getenv('CONFIG_PATH')
+    time_set = get_json_data(os.getenv('TIME_PATH'))
+    
+    # start scheduling
+    scheduling(config, time_set)
