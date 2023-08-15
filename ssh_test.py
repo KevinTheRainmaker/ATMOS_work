@@ -8,7 +8,6 @@ import os
 from pathlib import Path
 import sys
 from scp import SCPClient
-# import dropbox
 import zipfile
 import chardet
 import csv
@@ -37,21 +36,9 @@ def env_setting(data_path: str):
     os.makedirs(data_path, exist_ok=True)
 
     # set log file
-    logging.basicConfig(filename='ATMOS_Bot.log', level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.basicConfig(filename='ATMOS_Bot.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# return current time in hour:month:second form
-def get_time():
-    now = datetime.datetime.now()
-    now = now.strftime("%H:%M:%S")
-    return now
-
-# logging the intermediate results
-# def logging(log):
-#     data_dir = os.getenv('DATA_DIR', 'data')
-#     log_path = os.getenv('LOG_PATH')
-#     print(log)
-#     with open(log_path, 'a') as f:
-#         f.write(log)
+    return get_json_data(config_path), get_json_data(time_path)
 
 def elapsed_time(elapsed_seconds):
     elapsed_minutes = int(elapsed_seconds // 60)
@@ -109,104 +96,65 @@ def ghg_to_csv(zip_file):
         failed = os.path.path.basename(zip_file)
         return failed
 
-# def zip_csv_dir(directory, today):
-#     # zip file name
-#     zip_filename = f"{directory}/{today}_csv.zip"
-
-#     # create temporal directory to contain csvs
-#     temp_directory = f"{directory}/csv_temp"
-#     os.makedirs(temp_directory, exist_ok=True)
-
-#     # seraching the files in directory
-#     for filename in os.listdir(directory):
-#         filepath = os.path.join(directory, filename)
-        
-#         # check the prior
-#         if filename.startswith(str(today)):
-#             # move the files into temporal directory
-#             shutil.move(filepath, temp_directory)
-
-#     # compress temporal directory
-#     if len(os.listdir(temp_directory)) == 0:
-#         print('###WARNING###\nCSV folder is empty')
-#     else:
-#         shutil.make_archive(zip_filename, "zip", temp_directory)
-
-#     # delete temporal directory
-#     shutil.rmtree(temp_directory)
-
 # SSH Client for connection test
 # server, port, username and password are saved in the config.json
-def createSSHClient(server, port, username, password):
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(server, port, username, password)
-    return client
+def test_ssh_connection(hostname, port, username, password):
+    logging.info(f'Try to log in {username}@{hostname}..')
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(hostname, port=port, username=username, password=password)
+        logging.info("SSH connection successful!")
+        client.close()
+        return True
+    except paramiko.AuthenticationException:
+        logging.critical("Authentication failed.")
+        return False
+    except paramiko.SSHException as e:
+        logging.error("SSH connection failed:", str(e))
+        return False
+    except Exception as e:
+        logging.error("An error occurred:", str(e))
+        return False
 
 # visualize progress status for scp download
 def progress(filename, size, sent):
     sys.stdout.write("%s\'s progress: %.2f%%   \r" % (filename, float(sent)/float(size)*100) )
 
-# def move_folder_contents_to_team_account(folder_path, team_email, access_token):
-#     try:
-#         # Dropbox 인증
-#         dbx = dropbox.Dropbox(access_token)
+def download_files_in_directory(hostname, port, username, password, remote_directory, local_directory):
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(hostname, username=username, password=password)
 
-#         # 공유 폴더 내용 가져오기
-#         folder_entries = dbx.files_list_folder(folder_path).entries
+    with SCPClient(ssh.get_transport()) as scp:
+        for item in scp.listdir(remote_directory):
+            remote_item_path = os.path.join(remote_directory, item)
+            local_item_path = os.path.join(local_directory, item)
+            scp.get(remote_item_path, local_item_path)
 
-#         # 각 파일을 팀 계정으로 이동시키기
-#         for entry in folder_entries:
-#             if isinstance(entry, dropbox.files.FileMetadata):
-#                 file_path = entry.path_lower
-#                 file_name = file_path.split('/')[-1]
-#                 new_path = '/{}'.format(file_name)
+    ssh.close()
 
-#                 # 파일 이동
-#                 dbx.files_move(file_path, new_path, allow_shared_folder=True)
-
-#                 # 팀 계정으로 공유 설정
-#                 sharing_settings = dropbox.sharing.SharedLinkSettings(team_member_only=True)
-#                 shared_link = dbx.sharing_create_shared_link(new_path)
-#                 dbx.sharing_add_folder_member(shared_link.url, team_email, settings=sharing_settings)
-
-#         print("파일들이 성공적으로 팀 계정으로 이동되었습니다.")
-
-#     except AuthError as e:
-#         print("드롭박스 API 인증에 실패했습니다.")
-#         print(e)
+def download_worker(args):
+    download_files_in_directory(*args)
 
 # main function of automation
 # detailed explanation can be found in README.md
-def job(time_buffer, config):
-    
-    # for time logging
-    today = datetime.date.today()
+def job(time_buffer):
     raw_results = []
 
     # source directories (server)
     src_dir = 'data'
     
     # destination directories (local)
-    dst_dir = 'temp'
+    dst_dir = os.getenv('DATA_PATH')
 
     # ssh connection test
-    logging(f'\n------{today}------\n')
-    logging(f'\nTry to log in {config["USER_NAME"]}@{config["HOST_IP"]}..\n')
-
-    while(True):
-        try:
-            ssh = createSSHClient(config['HOST_IP'], port=config['CONN_PORT'], username=config['USER_NAME'], password=config['PASSWORD'])
-            break
-        except:
-            logging(f'\nConnection failed... Retrying in 30 seconds.\nLocal time: {get_time()}\n')
-            time.sleep(30)
-
-    logging(f'\n**Connection Successed!**\nLocal time: {get_time()}\n')
-
+    ssh = check_ssh_connect()
+    
     # create scp client
     scp = SCPClient(ssh.get_transport(), progress=progress)
     
+    today = datetime.date.today()
     date_list = [str(today)]
 
     for i in range(int(time_buffer)):
@@ -231,9 +179,30 @@ def job(time_buffer, config):
     
     elapsed_seconds = time.time() - start
     elapsed_time_formatted = elapsed_time(elapsed_seconds)
+
+    print(f'"summaries" has been downloaded to "{dst_dir}". (elapsed time: {elapsed_time_formatted})\n')
     
-    logging(f'\n"summaries" has been downloaded to "{dst_dir}". (elapsed time: {elapsed_time_formatted})\nLocal time: {get_time()}\n')
-    
+    processes = []
+    grouped_files = {}
+
+    for remote_file in remote_files:
+        remote_directory = os.path.dirname(remote_file)
+        if remote_directory not in grouped_files:
+            grouped_files[remote_directory] = []
+        grouped_files[remote_directory].append(remote_file)
+
+    for remote_directory, files in grouped_files.items():
+        local_directory = os.path.join(local_dir, remote_directory.lstrip('/'))
+        os.makedirs(local_directory, exist_ok=True)
+
+        process_args = (hostname, username, password, remote_directory, local_directory)
+        process = multiprocessing.Process(target=download_worker, args=(process_args,))
+        processes.append(process)
+        process.start()
+
+    for process in processes:
+        process.join()
+
     for raw_file_ent in raw_results:
         # print(raw_file_ent)
         raw_file = os.path.path.basename(raw_file_ent)  # Extract file name
@@ -261,7 +230,7 @@ def job(time_buffer, config):
     elapsed_seconds = time.time() - start
     elapsed_time_formatted = elapsed_time(elapsed_seconds)
 
-    logging(f'\n"raw" has been downloaded to "{dst_dir}". (elapsed time: {elapsed_time_formatted})\nLocal time: {get_time()}\n')
+    print(f'\n"raw" has been downloaded to "{dst_dir}". (elapsed time: {elapsed_time_formatted})\n')
     
     # close the connections
     scp.close()        
@@ -269,7 +238,7 @@ def job(time_buffer, config):
 
     # convert ghg to csv
     local_raw_dir = './temp/raw'
-    logging(f'\nTranslating ghg to csv...\nLocal time: {get_time()}\n')
+    print(f'\nTranslating ghg to csv...\nLocal time: {get_time()}\n')
     
     start = time.time()
     failed_list = []
@@ -289,8 +258,8 @@ def job(time_buffer, config):
     elapsed_seconds = time.time() - start
     elapsed_time_formatted = elapsed_time(elapsed_seconds)
 
-    logging(f'\nGHG has been converted. (elapsed time: {elapsed_time_formatted})\nLocal time: {get_time()}\n')
-    logging(f'\nThese are the failed list: {failed_list}\n')
+    print(f'\nGHG has been converted. (elapsed time: {elapsed_time_formatted})\n')
+    print(f'\nThese are the failed list: {failed_list}\n')
 
     # target_formats = ['.data', '.ghg']  # format to delete
     target_formats = ['.data']
@@ -302,76 +271,38 @@ def job(time_buffer, config):
                 file_path = os.path.join(local_raw_dir, filename)
                 os.remove(file_path)
 
-    # csv_path = f'{dst_dir_list[i]}/csv'
-    # zip_csv_dir(csv_path, today)
-
-    ##################THIS PART HAS BEEN DEPRICATED SINCE THE CLIENT'S NEEDS CHANGED################
-    """
-    # Using Dropbox API
-    # ACCESS_KEY, REFRESH_TOKEN, APP_KEY and APP_SECRET are saved in the config.json
-    dbx = dropbox.Dropbox(oauth2_access_token=default_config["ACCESS_KEY"],
-                     oauth2_refresh_token=default_config["REFRESH_TOKEN"], # to refresh the Access Token
-                        app_key=default_config['APP_KEY'],
-                        app_secret=default_config['APP_SECRET'])
-    
-    # data path in local
-    temp_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'temp')
-    data_dir = os.environ.get('DATA_DIR', temp_path)
-    
-    # data path at dropbox
-    dropbox_destination = os.environ.get('DROPBOX_DESTINATION', '/CO2')
-
-    # enumerate local files recursively
-    logging(f'\nUploading the data to DropBox...\nLocal time: {get_time()}\n')
-    
-    for root, _, files in os.walk(data_dir):
-        for filename in tqdm(files):
-
-            # construct the full local path
-            local_path = os.path.join(root, filename)
-
-            # construct the full Dropbox path
-            relative_path = os.path.relpath(local_path, data_dir)
-            dropbox_path = os.path.join(dropbox_destination, relative_path)
-            
-            if sys.platform == 'win32':
-                local_path = local_path.replace('\\', '/')
-                dropbox_path = dropbox_path.replace('\\', '/')
-
-            # upload the file
-            with open(local_path, "rb") as f:
-                while(True):
-                    try:
-                        dbx.files_upload(f.read(), dropbox_path, mode=dropbox.files.WriteMode.overwrite)
-                        break
-                    except dropbox.exceptions.ApiError:
-                        # if API error occured, retry it in 3 seconds
-                        # if the error occured continnuously, please let me know
-                        logging(f'\nUpload failed... Retrying in 3 seconds.\nLocal time: {get_time()}\n')
-                        time.sleep(3)
-
-    logging(f"\nData successfully uploaded to dropbox. (saved directory: {dropbox_destination})\nLocal time: {get_time()}\n")
-    """
-    ################################################################################################
-    
     os.system('cls') # clear the console output
 
+def job():
+    config, time_set = env_setting('./temp')
+    
+    hostname = config['HOST_IP']
+    port=config['CONN_PORT']
+    username=config['USER_NAME']
+    password=config['PASSWORD']
+    
+    connect_flag = False
+    while(connect_flag == False):
+        test_ssh_connection(hostname, port, username, password)
+        time.sleep(10)
+    ############TODO##############
+    
+    
 # scheduling for automation
-def scheduling(config, time_set):
+def scheduling(time_set):
     repeat_type = time_set['REPEAT_TYPE']
     clock = time_set['SCHEDULE_SETTING']
     time_buffer = time_set['TIME_BUFFER']
-    print(repeat_type)
-    print(clock)
-    quit()
+
     if repeat_type == 'day':
-        schedule.every().day.at(clock).do(lambda: job(time_buffer, config))
+        schedule.every().day.at(clock).do(lambda: job(time_buffer))
     elif repeat_type == 'hour':
-        schedule.every(int(clock)).hours.do(lambda: job(time_buffer, config))
+        schedule.every(int(clock)).hours.do(lambda: job(time_buffer))
     elif repeat_type == 'minute':
-        schedule.every(int(clock)).minutes.do(lambda: job(time_buffer, config))
+        schedule.every(int(clock)).minutes.do(lambda: job(time_buffer))
     else:
-        logging(f'\nWrong repeat type({repeat_type}).\nrepeat_type must be in ["day", "hour", "minute"]\n')
+        logging.critical(f'\nWrong repeat type: {repeat_type}')
+        print(f'\nWrong repeat type({repeat_type}).\nrepeat_type must be in ["day", "hour", "minute"]\n')
         quit()
     
     # for checking whether the process is stopped
@@ -404,10 +335,7 @@ def get_json_data(config_path: str):
         return json_data['DEFAULT']
 
 if __name__ == '__main__':
-    env_setting('./temp')
-    
-    config = os.getenv('CONFIG_PATH')
-    time_set = get_json_data(os.getenv('TIME_PATH'))
     
     # start scheduling
-    scheduling(config, time_set)
+    # scheduling(time_set)
+    # check_ssh_connect(config)
