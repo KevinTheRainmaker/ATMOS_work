@@ -12,11 +12,28 @@ from scp import SCPClient
 import zipfile
 import chardet
 import csv
-import shutil
 
-# add environment variables for access
-os.environ['DATA_DIR'] = './temp'
-# os.environ['DROPBOX_DESTINATION'] = '/CO2'
+def generate_unique_filename(file_name):
+    index = int(file_name.split('_')[-1])
+
+    while os.path.exists(file_name + ".txt"):
+        index += 1
+    
+        file_name = '_'.join(file_name.split('_')[:-1]) + f'_{index}'
+
+    return file_name + ".txt"
+
+def env_setting(data_dir: str):
+    # add environment variables for access
+    os.environ['DATA_DIR'] = data_dir
+    # os.environ['DROPBOX_DESTINATION'] = '/CO2'
+
+    today = datetime.date.today()
+    log_name = generate_unique_filename(os.path.join(data_dir, f'log_{today}_1'))    
+    # create datafolder and log file
+    os.makedirs(data_dir, exist_ok=True)
+    with open(log_name, "w") as f:
+        f.write(f'------{today}------\n')
 
 # return current time in hour:month:second form
 def get_time():
@@ -26,8 +43,9 @@ def get_time():
 
 # logging the intermediate results
 def logging(log):
+    data_dir = os.getenv('DATA_DIR', './data')
     print(log)
-    with open('./temp/log.txt', 'a') as f:
+    with open(f'{data_dir}/log.txt', 'a') as f:
         f.write(log)
 
 def elapsed_time(elapsed_seconds):
@@ -37,7 +55,7 @@ def elapsed_time(elapsed_seconds):
     elapsed_time_formatted = f"{elapsed_minutes:02d}:{elapsed_seconds:02d}"
     
     return elapsed_time_formatted
- 
+
 # convert GHG format to CSV format
 # if translation failed, return GHG file name
 def ghg_to_csv(zip_file):
@@ -391,13 +409,14 @@ def get_json_data(config_path: str):
 
 if __name__ == '__main__':
 
-    config_path = get_relative_path('config.json')
-    time_path = get_relative_path('time_set.json')
-    log_path = get_relative_path(os.path.join('temp','log.txt'))
+    # config_path = get_relative_path('config.json')
+    # time_path = get_relative_path('time_set.json')
+    # log_path = get_relative_path(os.path.join('temp','log.txt'))
     
-    # load configurations
-    config = get_json_data(config_path)
-    time_set = get_json_data(time_path)
+    # # load configurations
+    # config = get_json_data(config_path)
+    # time_set = get_json_data(time_path)
     
-    # start scheduling
-    scheduling(time_set, config)
+    # # start scheduling
+    # scheduling(time_set, config)
+    env_setting('./temp')
