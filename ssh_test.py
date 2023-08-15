@@ -12,16 +12,28 @@ from scp import SCPClient
 import zipfile
 import chardet
 import csv
+import re
 
-def generate_unique_filename(file_name):
-    index = int(file_name.split('_')[-1])
-
-    while os.path.exists(file_name + ".txt"):
-        index += 1
+def get_next_index(file_name):
+    pattern = r"_(\d+)\.txt$"
+    match = re.search(pattern, file_name)
     
-        file_name = '_'.join(file_name.split('_')[:-1]) + f'_{index}'
+    if match:
+        return int(match.group(1)) + 1
+    else:
+        return 1
 
-    return file_name + ".txt"
+def generate_unique_filename(base_path):
+    index = 1
+    new_path = base_path
+
+    while os.path.exists(new_path):
+        index = get_next_index(new_path)
+        new_path = re.sub(r"_(\d+)\.txt$", f"_{index}.txt", new_path)
+
+    os.environ['LOG_PATH'] = new_path
+    
+    return new_path
 
 def env_setting(data_dir: str):
     # add environment variables for access
@@ -29,7 +41,7 @@ def env_setting(data_dir: str):
     # os.environ['DROPBOX_DESTINATION'] = '/CO2'
 
     today = datetime.date.today()
-    log_name = generate_unique_filename(os.path.join(data_dir, f'log_{today}_1'))    
+    log_name = generate_unique_filename(os.path.join(data_dir, f'log_{today}_1.txt'))
     # create datafolder and log file
     os.makedirs(data_dir, exist_ok=True)
     with open(log_name, "w") as f:
@@ -44,8 +56,9 @@ def get_time():
 # logging the intermediate results
 def logging(log):
     data_dir = os.getenv('DATA_DIR', './data')
+    log_path = os.getenv('LOG_PATH')
     print(log)
-    with open(f'{data_dir}/log.txt', 'a') as f:
+    with open(log_path, 'a') as f:
         f.write(log)
 
 def elapsed_time(elapsed_seconds):
@@ -60,7 +73,7 @@ def elapsed_time(elapsed_seconds):
 # if translation failed, return GHG file name
 def ghg_to_csv(zip_file):
     base_path = os.path.dirname(zip_file)
-    base_name = os.path.basename(zip_file)
+    base_name = os.path.path.basename(zip_file)
 
     data_file = base_name
     data_file = data_file.replace('ghg','data')
@@ -101,7 +114,7 @@ def ghg_to_csv(zip_file):
             pass
     except:
         # return the name of ghg file if translation failed
-        failed = os.path.basename(zip_file)
+        failed = os.path.path.basename(zip_file)
         return failed
 
 # def zip_csv_dir(directory, today):
@@ -231,7 +244,7 @@ def job(time_buffer, config):
     
     for raw_file_ent in raw_results:
         # print(raw_file_ent)
-        raw_file = os.path.basename(raw_file_ent)  # Extract file name
+        raw_file = os.path.path.basename(raw_file_ent)  # Extract file name
 
         csv_file = raw_file.decode('utf-8').replace('.ghg', '.csv')
 
