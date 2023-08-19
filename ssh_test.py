@@ -273,9 +273,7 @@ def job(time_buffer):
 
     os.system('cls') # clear the console output
 
-def job():
-    config, time_set = env_setting('./temp')
-    
+def job(config, time_buffer):    
     hostname = config['HOST_IP']
     port=config['CONN_PORT']
     username=config['USER_NAME']
@@ -289,17 +287,19 @@ def job():
     
     
 # scheduling for automation
-def scheduling(time_set):
+def scheduling():
+    config, time_set = env_setting('./temp')
+    
     repeat_type = time_set['REPEAT_TYPE']
     clock = time_set['SCHEDULE_SETTING']
     time_buffer = time_set['TIME_BUFFER']
 
     if repeat_type == 'day':
-        schedule.every().day.at(clock).do(lambda: job(time_buffer))
+        schedule.every().day.at(clock).do(lambda: job(config, time_buffer))
     elif repeat_type == 'hour':
-        schedule.every(int(clock)).hours.do(lambda: job(time_buffer))
+        schedule.every(int(clock)).hours.do(lambda: job(config, time_buffer))
     elif repeat_type == 'minute':
-        schedule.every(int(clock)).minutes.do(lambda: job(time_buffer))
+        schedule.every(int(clock)).minutes.do(lambda: job(config, time_buffer))
     else:
         logging.critical(f'\nWrong repeat type: {repeat_type}')
         print(f'\nWrong repeat type({repeat_type}).\nrepeat_type must be in ["day", "hour", "minute"]\n')
