@@ -12,6 +12,7 @@ import zipfile
 import chardet
 import csv
 import logging
+import multiprocessing
 
 # get relative path to access external files
 def get_relative_path(file_name):
@@ -28,12 +29,15 @@ def env_setting(data_path: str):
     # # load configurations
     config_path = get_relative_path('config.json')
     time_path = get_relative_path('time_set.json')
-
+    sum_path = os.path.join(data_path, 'summaries')
+    remote_path = 'data'
     # add environment variables for access
     os.environ['CONFIG_PATH'] = config_path
     os.environ['TIME_PATH'] = time_path
     os.environ['DATA_PATH'] = data_path
+    os.environ['SUM_PATH'] = sum_path
     os.makedirs(data_path, exist_ok=True)
+    os.makedirs(sum_path, exist_ok=True)
 
     # set log file
     logging.basicConfig(filename='ATMOS_Bot.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -47,6 +51,10 @@ def elapsed_time(elapsed_seconds):
     elapsed_time_formatted = f"{elapsed_minutes:02d}:{elapsed_seconds:02d}"
     
     return elapsed_time_formatted
+
+def logging_info(log):
+    logging.info(log)
+    print(log)
 
 # convert GHG format to CSV format
 # if translation failed, return GHG file name
@@ -99,12 +107,12 @@ def ghg_to_csv(zip_file):
 # SSH Client for connection test
 # server, port, username and password are saved in the config.json
 def test_ssh_connection(hostname, port, username, password):
-    logging.info(f'Try to log in {username}@{hostname}..')
+    logging_info(f'Try to log in {username}@{hostname}..')
     try:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.connect(hostname, port=port, username=username, password=password)
-        logging.info("SSH connection successful!")
+        logging_info("SSH connection successful!")
         client.close()
         return True
     except paramiko.AuthenticationException:
@@ -121,39 +129,7 @@ def test_ssh_connection(hostname, port, username, password):
 def progress(filename, size, sent):
     sys.stdout.write("%s\'s progress: %.2f%%   \r" % (filename, float(sent)/float(size)*100) )
 
-def download_files_in_directory(hostname, port, username, password, remote_directory, local_directory):
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(hostname, username=username, password=password)
-
-    with SCPClient(ssh.get_transport()) as scp:
-        for item in scp.listdir(remote_directory):
-            remote_item_path = os.path.join(remote_directory, item)
-            local_item_path = os.path.join(local_directory, item)
-            scp.get(remote_item_path, local_item_path)
-
-    ssh.close()
-
-def download_worker(args):
-    download_files_in_directory(*args)
-
-# main function of automation
-# detailed explanation can be found in README.md
-def job(time_buffer):
-    raw_results = []
-
-    # source directories (server)
-    src_dir = 'data'
-    
-    # destination directories (local)
-    dst_dir = os.getenv('DATA_PATH')
-
-    # ssh connection test
-    ssh = check_ssh_connect()
-    
-    # create scp client
-    scp = SCPClient(ssh.get_transport(), progress=progress)
-    
+def get_date_list(time_buffer):
     today = datetime.date.today()
     date_list = [str(today)]
 
@@ -161,8 +137,49 @@ def job(time_buffer):
         date = today - datetime.timedelta(days=i+1)
         date_list.append(str(date))
 
-    start = time.time()
+    return date_list
 
+def download_file(args):
+    hostname, port, username, password, date = args
+    year, month, _ = date.split('-')
+    dst_dir = os.getenv('DATA_PATH')
+    
+    raw_results = []
+    
+    remote_path = f"data/raw/{str(year)}/{str(month)}"
+    local_raw_path = os.path.join(dst_dir, 'raw',str(year), str(month))
+
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(hostname, port, username, password)
+
+    command_raw = f'ls {remote_path}/{str(date)}*.ghg'
+    _, stdout, _ = ssh.exec_command(command_raw)
+    output_raw = stdout.read().split()
+    raw_results.extend(output_raw)
+    
+    for raw_file_ent in raw_results:
+        # print(raw_file_ent)
+        raw_file = os.path.basename(raw_file_ent)  # Extract file name
+
+        raw_dir = Path(local_raw_path)
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        
+        with SCPClient(ssh.get_transport(), progress=progress) as scp:
+            while(True):
+                try:
+                    scp.get(f"{remote_path}/{str(raw_file.decode('utf-8'))}", os.path.join(local_raw_path), recursive=True)
+                    break
+                except multiprocessing.TimeoutError:
+                    logging_info('Time out Occured.. Retry in 1 sec.')
+                    time.sleep(1)
+            # scp.get(f"{remote_path}/{str(raw_file.decode('utf-8'))}", os.path.join(local_raw_path), recursive=True)
+    
+    ssh.close()
+
+# main function of automation
+# detailed explanation can be found in README.md
+def job(time_buffer):
     # make destination directories at local
     sum_dir = Path(os.path.join(dst_dir, 'summaries'))
     sum_dir.mkdir(parents=True, exist_ok=True)
@@ -281,10 +298,22 @@ def job(config, time_buffer):
     
     connect_flag = False
     while(connect_flag == False):
-        test_ssh_connection(hostname, port, username, password)
+        connect_flag = test_ssh_connection(hostname, port, username, password)
         time.sleep(10)
-    ############TODO##############
     
+    date_list = get_date_list(time_buffer)
+    num_processes = multiprocessing.cpu_count()
+    logging_info(f'Usable CPU Cores: {num_processes}')
+    
+    chunk_size = max(int(time_buffer)//int(num_processes), int(num_processes))
+    logging_info(f'Chunk Size: {chunk_size}')
+    # for date in date_list:
+    #     download_file(hostname, port, username, password, date)    
+    start = time.time()
+    with multiprocessing.Pool(processes=num_processes) as pool:
+        pool.map(download_file, [(hostname, port, username, password, date) for date in date_list], chunk_size)
+    print(time.time()-start)
+    logging_info('Download is Done')
     
 # scheduling for automation
 def scheduling():
@@ -335,7 +364,10 @@ def get_json_data(config_path: str):
         return json_data['DEFAULT']
 
 if __name__ == '__main__':
+    config, time_set = env_setting('./temp')
+    time_buffer = time_set['TIME_BUFFER']
     
+    job(config, time_buffer)
     # start scheduling
     # scheduling(time_set)
     # check_ssh_connect(config)
