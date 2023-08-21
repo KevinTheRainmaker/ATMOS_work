@@ -13,7 +13,7 @@ import chardet
 import csv
 import logging
 import multiprocessing
-
+from multiprocessing import Process
 # get relative path to access external files
 def get_relative_path(file_name):
     if getattr(sys, 'frozen', False):  
@@ -30,14 +30,17 @@ def env_setting(data_path: str):
     config_path = get_relative_path('config.json')
     time_path = get_relative_path('time_set.json')
     sum_path = os.path.join(data_path, 'summaries')
-    remote_path = 'data'
+    csv_path = os.path.join(data_path, 'csv')
+    
     # add environment variables for access
     os.environ['CONFIG_PATH'] = config_path
     os.environ['TIME_PATH'] = time_path
     os.environ['DATA_PATH'] = data_path
     os.environ['SUM_PATH'] = sum_path
+    os.environ['CSV_PATH'] = csv_path
     os.makedirs(data_path, exist_ok=True)
     os.makedirs(sum_path, exist_ok=True)
+    os.makedirs(csv_path, exist_ok=True)
 
     # set log file
     logging.basicConfig(filename='ATMOS_Bot.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -56,52 +59,53 @@ def logging_info(log):
     logging.info(log)
     print(log)
 
+def extract_data(ghg_path):
+    base_path = os.path.dirname(ghg_path)
+    ghg_file = os.path.basename(ghg_path)
+    data_file = ghg_file.replace('.ghg', '.data')
+
+    try:
+        # extract .data file from .ghg
+        with zipfile.ZipFile(ghg_path, 'r') as zip_ref:
+                zip_ref.extract(data_file, path=str(base_path))
+    except:
+        failed = os.path.basename(ghg_file)
+        return failed
+
 # convert GHG format to CSV format
 # if translation failed, return GHG file name
-def ghg_to_csv(zip_file):
-    base_path = os.path.dirname(zip_file)
-    base_name = os.path.path.basename(zip_file)
-
-    data_file = base_name
-    data_file = data_file.replace('ghg','data')
+def data_to_csv(data_file):
+    base_path = os.path.dirname(data_file)
     data_path = os.path.join(base_path, data_file)
 
-    csv_file = base_name
-    csv_file = csv_file.replace('ghg','csv')
-    csv_path = os.path.join('./temp', 'csv')
+    csv_file = os.path.basename(data_file)
+    csv_file = csv_file.replace('data','csv')
+    csv_path = os.getenv('CSV_PATH')
     csv_path = os.path.join(csv_path, csv_file)
     
     try:
-        # extract .data file from .ghg
-        with zipfile.ZipFile(zip_file, 'r') as zip_ref:
-            zip_ref.extract(data_file, path=str(base_path))
+        # detect encoding of the .data file
+        with open(data_path, 'rb') as file:
+            result = chardet.detect(file.read())
             
-        if not os.path.exists(csv_path):
-                
-            # detect encoding of the .data file
-            with open(data_path, 'rb') as file:
-                result = chardet.detect(file.read())
-            
-            encoding = result['encoding']
+        encoding = result['encoding']
 
-            # read data file and write to csv
-            with open(data_path, 'r', encoding=encoding) as data_form, open(csv_path, 'w', newline='', encoding='utf-8') as csv_form:
-                writer = csv.writer(csv_form)
+        # read data file and write to csv
+        with open(data_path, 'r', encoding=encoding) as data_form, open(csv_path, 'w', newline='', encoding='utf-8') as csv_form:
+            writer = csv.writer(csv_form)
 
-                for line in data_form:
-                    line = line.strip()
+            for line in data_form:
+                line = line.strip()
 
-                    if line.startswith('#') or not line:
-                        continue
+                if line.startswith('#') or not line:
+                    continue
 
-                    data = line.split('\t')
+                data = line.split('\t')
 
-                    writer.writerow(data)
-        else:
-            pass
+                writer.writerow(data)
     except:
         # return the name of ghg file if translation failed
-        failed = os.path.path.basename(zip_file)
+        failed = os.path.basename(data_file)
         return failed
 
 # SSH Client for connection test
@@ -139,44 +143,86 @@ def get_date_list(time_buffer):
 
     return date_list
 
-def download_file(args):
+def get_download_list(args):
     hostname, port, username, password, date = args
     year, month, _ = date.split('-')
-    dst_dir = os.getenv('DATA_PATH')
     
     raw_results = []
+    sum_results = []
     
-    remote_path = f"data/raw/{str(year)}/{str(month)}"
-    local_raw_path = os.path.join(dst_dir, 'raw',str(year), str(month))
+    raw_path = f"data/raw/{str(year)}/{str(month)}"
+    sum_path = f'data/summaries'
 
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(hostname, port, username, password)
 
-    command_raw = f'ls {remote_path}/{str(date)}*.ghg'
+    command_raw = f'ls {raw_path}/{str(date)}*.ghg'
     _, stdout, _ = ssh.exec_command(command_raw)
     output_raw = stdout.read().split()
+    
+    command_sum = f'ls {sum_path}/{str(date)}*.txt'
+    _, stdout, _ = ssh.exec_command(command_sum)
+    output_sum = stdout.read().split()
+    
     raw_results.extend(output_raw)
+    sum_results.extend(output_sum)
+    
+    return year, month, raw_results, sum_results
+
+def download_file(args):
+    hostname, port, username, password, _ = args
+    dst_dir = os.getenv('DATA_PATH')
+    
+    raw_results = []
+    sum_results = []
+    
+    year, month, raw_results, sum_results = get_download_list(args)
+    
+    local_raw_path = os.path.join(dst_dir, 'raw',str(year), str(month))
+    local_sum_path = os.path.join(dst_dir, 'summaries')
     
     for raw_file_ent in raw_results:
         # print(raw_file_ent)
-        raw_file = os.path.basename(raw_file_ent)  # Extract file name
-
+        # raw_file = os.path.basename(raw_file_ent)  # Extract file name
         raw_dir = Path(local_raw_path)
         raw_dir.mkdir(parents=True, exist_ok=True)
-        
-        with SCPClient(ssh.get_transport(), progress=progress) as scp:
-            while(True):
-                try:
-                    scp.get(f"{remote_path}/{str(raw_file.decode('utf-8'))}", os.path.join(local_raw_path), recursive=True)
-                    break
-                except multiprocessing.TimeoutError:
-                    logging_info('Time out Occured.. Retry in 1 sec.')
-                    time.sleep(1)
-            # scp.get(f"{remote_path}/{str(raw_file.decode('utf-8'))}", os.path.join(local_raw_path), recursive=True)
-    
-    ssh.close()
 
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(hostname, port, username, password, timeout=120)
+        with SCPClient(ssh.get_transport(), progress=progress) as scp:
+            # while(True):
+            #     try:
+            #         scp.get(f"{raw_file_ent}", os.path.join(local_raw_path), recursive=True)
+            #         break
+            #     except multiprocessing.TimeoutError:
+            #         logging_info('Time out Occured.. Retry in 1 sec.')
+            #         time.sleep(1)
+            # scp.get(f"{remote_path}/{str(raw_file.decode('utf-8'))}", os.path.join(local_raw_path), recursive=True)
+            scp.get(f"{raw_file_ent.decode('utf-8')}", os.path.join(local_raw_path), recursive=True)
+        ssh.close()
+
+    for sum_file_ent in sum_results:
+        # print(sum_file_ent)
+        # raw_file = os.path.basename(sum_file_ent)  # Extract file name
+        sum_dir = Path(local_sum_path)
+        sum_dir.mkdir(parents=True, exist_ok=True)
+
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(hostname, port, username, password, timeout=120)
+        with SCPClient(ssh.get_transport(), progress=progress) as scp:
+            # while(True):
+            #     try:
+            #         scp.get(f"{sum_file_ent}", os.path.join(local_sum_path), recursive=True)
+            #         break
+            #     except multiprocessing.TimeoutError:
+            #         logging_info('Time out Occured.. Retry in 1 sec.')
+            #         time.sleep(1)
+            # scp.get(f"{remote_path}/{str(raw_file.decode('utf-8'))}", os.path.join(local_sum_path), recursive=True)
+            scp.get(f"{sum_file_ent.decode('utf-8')}", os.path.join(local_sum_path), recursive=True)
+        ssh.close()
 # main function of automation
 # detailed explanation can be found in README.md
 def job(time_buffer):
@@ -295,6 +341,10 @@ def job(config, time_buffer):
     port=config['CONN_PORT']
     username=config['USER_NAME']
     password=config['PASSWORD']
+    failed_dict = {
+        'Extraction Failed':[],
+        'Conversion Failed':[]
+        }
     
     connect_flag = False
     while(connect_flag == False):
@@ -302,19 +352,39 @@ def job(config, time_buffer):
         time.sleep(10)
     
     date_list = get_date_list(time_buffer)
-    num_processes = multiprocessing.cpu_count()
-    logging_info(f'Usable CPU Cores: {num_processes}')
+    # num_processes = multiprocessing.cpu_count()
+    # logging_info(f'Usable CPU Cores: {num_processes}')
     
-    chunk_size = max(int(time_buffer)//int(num_processes), int(num_processes))
-    logging_info(f'Chunk Size: {chunk_size}')
+    # chunk_size = max(int(time_buffer)//int(num_processes), int(num_processes))
+    # logging_info(f'Chunk Size: {chunk_size}')
+    for date in date_list:
+        download_file([hostname, port, username, password, date])
     # for date in date_list:
-    #     download_file(hostname, port, username, password, date)    
-    start = time.time()
-    with multiprocessing.Pool(processes=num_processes) as pool:
-        pool.map(download_file, [(hostname, port, username, password, date) for date in date_list], chunk_size)
-    print(time.time()-start)
+    #     p = Process(target=download_file, args=[(hostname, port, username, password, date)])
+    #     p.start()
+    #     p.join()
+    # with multiprocessing.Pool(processes=num_processes) as pool:
+    #     pool.map(download_file, [(hostname, port, username, password, date) for date in date_list], chunk_size)
     logging_info('Download is Done')
     
+    # Perform conversion for all files in the path
+    for root, _, files in os.walk(os.getenv('DATA_PATH')):
+        for file in tqdm(files):
+            if file.endswith('.ghg'):
+                ghg_file = os.path.join(root, file)
+
+                extraction_fail = extract_data(ghg_file)
+                if (extraction_fail != None):
+                    failed_dict['Extraction Failed'].append(extraction_fail)
+            if file.endswith('.data'):
+                data_file = os.path.join(root, file)
+                conversion_fail = data_to_csv(data_file)
+                # if conversion is not successed
+                if (conversion_fail != None):
+                    failed_dict['Conversion Failed'].append(conversion_fail)
+    logging_info('Conversion is Done.')
+    logging_info(f'Failed List: {[i for i in failed_dict.items()]}')
+
 # scheduling for automation
 def scheduling():
     config, time_set = env_setting('./temp')
